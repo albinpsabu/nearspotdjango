@@ -33,7 +33,10 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class HiddenSpotSerializer(serializers.ModelSerializer):
-
+    name = serializers.CharField(
+    required=True,
+    allow_blank=True
+)
     latitude = serializers.FloatField(write_only=True)
     longitude = serializers.FloatField(write_only=True)
 
@@ -56,6 +59,20 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
         ]
+    def validate_name(self, name):
+        name = name.strip()
+
+        if not name:
+            raise serializers.ValidationError(
+                "Spot name cannot be empty."
+            )
+
+        return name
+
+
+    def validate_description(self, description):
+        description = description.strip()
+        return description
 
     def validate_category(self, category):
 
@@ -65,6 +82,24 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
             )
 
         return category
+
+
+
+    def validate_latitude(self, latitude):
+        if not -90 <= latitude <= 90:
+            raise serializers.ValidationError(
+                "Latitude must be between -90 and 90."
+            )
+
+        return latitude
+
+    def validate_longitude(self, longitude):
+        if not -180 <= longitude <= 180:
+            raise serializers.ValidationError(
+                "Longitude must be between -180 and 180."
+            )
+
+        return longitude
 
     def create(self, validated_data):
 
@@ -85,7 +120,6 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
         )
 
         return spot
-
 
 class PendingSpotSerializer(serializers.ModelSerializer):
 

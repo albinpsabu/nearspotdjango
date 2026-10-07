@@ -10,6 +10,9 @@ from .views import (
     AdminUserListView,
     AdminListView,
     AdminUserStatusView,
+    ChangePasswordView,
+    PasswordResetRequestView,
+    PasswordResetConfirmView
 )
 
 
@@ -45,4 +48,32 @@ urlpatterns = [
     AdminUserStatusView.as_view(),
     name="admin-user-status",
     ),
+
+
+    #for changing the password 
+    path(
+        "change-password/", 
+        ChangePasswordView.as_view(), 
+        name="change-password"
+    ),
+
+
+
+
+    #for password reset
+    path(
+    "password-reset/request/",
+    PasswordResetRequestView.as_view(),
+    name="password-reset-request",
+    ),
+
+
+
+    path(
+    "password-reset/confirm/",
+    PasswordResetConfirmView.as_view(),
+    name="password-reset-confirm",
+    ),
+
+
 ]

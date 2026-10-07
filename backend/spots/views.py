@@ -1,7 +1,9 @@
 from rest_framework import generics
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from accounts.permissions import IsAdmin, IsUser,IsAdminOrEmployee
+from rest_framework.permissions import AllowAny
 from django.db import transaction
 from django.db.models import Count, Q
 from .models import (
@@ -278,23 +280,41 @@ class ApprovedSpotListView(generics.ListAPIView):
 
 class NearbySpotListView(generics.ListAPIView):
     serializer_class = ApprovedSpotSerializer
-    permission_classes = [IsUser]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
-        latitude = float(
-            self.request.query_params.get("latitude")
-        )
+        latitude_param = self.request.query_params.get("latitude")
+        longitude_param = self.request.query_params.get("longitude")
+        radius_param = self.request.query_params.get("radius", "5000")
 
-        longitude = float(
-            self.request.query_params.get("longitude")
-        )
+        if latitude_param is None or longitude_param is None:
+            raise ValidationError({
+                "error": "latitude and longitude are required."
+            })
 
-        radius = float(
-            self.request.query_params.get(
-                "radius",
-                5000
-            )
-        )
+        try:
+            latitude = float(latitude_param)
+            longitude = float(longitude_param)
+            radius = float(radius_param)
+        except (TypeError, ValueError):
+            raise ValidationError({
+                "error": "latitude, longitude, and radius must be valid numbers."
+            })
+
+        if not -90 <= latitude <= 90:
+            raise ValidationError({
+                "latitude": "Latitude must be between -90 and 90."
+            })
+
+        if not -180 <= longitude <= 180:
+            raise ValidationError({
+                "longitude": "Longitude must be between -180 and 180."
+            })
+
+        if radius <= 0:
+            raise ValidationError({
+                "radius": "Radius must be greater than 0."
+            })
 
         user_location = Point(
             longitude,
@@ -320,8 +340,6 @@ class NearbySpotListView(generics.ListAPIView):
             .select_related("category")
             .order_by("distance")
         )
-
-
 
 class MySpotListView(generics.ListAPIView):
     serializer_class = MySpotSerializer

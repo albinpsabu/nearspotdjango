@@ -1,7 +1,14 @@
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+import uuid
+from datetime import timedelta
+
+from django.utils import timezone
+
+from django.contrib.auth.models import (
+    AbstractBaseUser,
+    BaseUserManager,
+    PermissionsMixin,
+)
 from django.db import models
-
-
 class UserManager(BaseUserManager):
     def create_user(self, email, name, password=None, **extra_fields):
         if not email:
@@ -68,9 +75,37 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     objects = UserManager()
-
+#this tells django to use email instead of username for authentication
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["name"]
 
     def __str__(self):
         return f"{self.name} ({self.email})"
+    
+# 1. User requests password reset.
+# 2. System creates a PasswordResetToken.
+# 3. A unique UUID token is generated.
+# 4. Token is sent to the user's email.
+# 5. User opens the reset link.
+# 6. Backend verifies the token.
+# 7. User sets a new password.
+# 8. Token is marked as used.
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_reset_tokens",
+    )
+    token = models.UUIDField(
+        unique=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    used = models.BooleanField(default=False)
+
+    def is_expired(self):
+        return timezone.now() > self.created_at + timedelta(minutes=30)#token validity 
+
+    def __str__(self):
+        return f"Password reset token for {self.user.email}"

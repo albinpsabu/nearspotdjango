@@ -2,6 +2,7 @@ from io import BytesIO
 import os
 import subprocess
 import tempfile
+import uuid
 
 from PIL import Image
 from django.core.files import File
@@ -53,9 +54,8 @@ def compress_image(image_file):
 
     return ContentFile(
         output.read(),
-        name="optimized_image.jpg"
-    )
-
+        name=f"optimized_image_{uuid.uuid4().hex}.jpg"
+    )   
 
 def compress_video(video_file):
     """
@@ -147,13 +147,12 @@ def compress_video(video_file):
         with open(output_path, "rb") as compressed_file:
             compressed_video = File(
                 compressed_file,
-                name="optimized_video.mp4"
+                name=f"optimized_video_{uuid.uuid4().hex}.mp4"
             )
 
-            # Read the compressed file into memory
             compressed_content = ContentFile(
                 compressed_video.read(),
-                name="optimized_video.mp4"
+                name=compressed_video.name
             )
 
         return compressed_content
