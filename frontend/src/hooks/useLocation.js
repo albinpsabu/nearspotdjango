@@ -49,7 +49,7 @@ function useLocation() {
       {
         enableHighAccuracy: true,
         timeout: 30000,
-        maximumAge: 60000,
+        maximumAge: 10000,
       }
     );
   };

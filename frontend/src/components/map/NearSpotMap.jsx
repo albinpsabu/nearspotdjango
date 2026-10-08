@@ -1,195 +1,106 @@
+import { useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
+  useMap,
 } from "react-leaflet";
-
 import "leaflet/dist/leaflet.css";
 
 import UserLocationMarker from "./UserLocationMarker";
 import SpotMarker from "./SpotMarker";
 
+// ============================================================
+// MAP LOCATION CONTROLLER
+// ============================================================
 
-function NearSpotMap({ location, spots }) {
+function MapLocationController({ location }) {
+  const map = useMap();
 
+  useEffect(() => {
+    if (!location) {
+      return;
+    }
+
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+
+    if (
+      Number.isNaN(latitude) ||
+      Number.isNaN(longitude)
+    ) {
+      return;
+    }
+
+    map.flyTo(
+      [latitude, longitude],
+      15,
+      {
+        duration: 1.2,
+      }
+    );
+  }, [location, map]);
+
+  return null;
+}
+
+// ============================================================
+// NEARSPOT MAP
+// ============================================================
+
+function NearSpotMap({
+  location,
+  userLocation,
+  spots,
+}) {
   if (!location) {
     return null;
   }
 
-
-  // =========================================================
-  // MAP POSITION
-  // =========================================================
-
   const position = [
-    location.latitude,
-    location.longitude,
+    Number(location.latitude),
+    Number(location.longitude),
   ];
-
 
   return (
     <>
-
-      {/* =====================================================
-          MAP STYLING
-      ====================================================== */}
-
       <style>
         {`
-
-          /* ================================================
-             BRIGHT MAP
-          ================================================= */
-
-          .nearsport-map .leaflet-tile-pane {
-
-            filter:
-              brightness(0.98)
-              contrast(1.03)
-              saturate(0.95);
-
+          .nearsport-map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
           }
 
-
-          /* ================================================
-             ZOOM CONTROLS
-          ================================================= */
-
-          .nearsport-map
-          .leaflet-control-zoom {
-
-            border:
-              none !important;
-
-            box-shadow:
-              0 3px 12px
-              rgba(0,0,0,0.15)
-              !important;
-
+          .nearsport-map .leaflet-control-zoom {
+            border: none;
+            box-shadow: 0 8px 24px rgba(20, 40, 45, 0.14);
           }
 
-
-          .nearsport-map
-          .leaflet-control-zoom a {
-
-            position: fixed !important;
-
-            right: 20px !important;
-            bottom: 90px !important;
-
-            left: auto !important;
-            top: auto !important;
-
-            border: none !important;
-
-            box-shadow:
-                0 3px 12px rgba(0, 0, 0, 0.15) !important;
+          .nearsport-map .leaflet-control-zoom a {
+            width: 36px;
+            height: 36px;
+            line-height: 36px;
+            border: none;
+            background: rgba(255, 255, 255, 0.96);
+            color: #263639;
+            font-size: 18px;
+            font-weight: 700;
           }
 
-
-          .nearsport-map
-          .leaflet-control-zoom a:hover {
-
-            color:
-              #10cda4 !important;
-
-            background:
-              #f7fffd !important;
-
+          .nearsport-map .leaflet-control-zoom a:hover {
+            background: #f2fbf8;
+            color: #10cda4;
           }
 
-
-          /* ================================================
-             ATTRIBUTION
-          ================================================= */
-
-          .nearsport-map
-          .leaflet-control-attribution {
-
-            background:
-              rgba(255,255,255,0.85)
-              !important;
-
-            color:
-              #687779
-              !important;
-
+          .nearsport-map .leaflet-control-attribution {
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(8px);
+            border-radius: 8px 0 0 0;
+            padding: 3px 7px;
+            font-size: 9px;
           }
-
-
-          .nearsport-map
-          .leaflet-control-attribution a {
-
-            color:
-              #149d80
-              !important;
-
-          }
-
-
-          /* ================================================
-             POPUP
-          ================================================= */
-
-          .nearsport-map
-          .leaflet-popup-content-wrapper {
-
-            background:
-              #ffffff
-              !important;
-
-            color:
-              #172427
-              !important;
-
-            border:
-              1px solid
-              rgba(20,40,45,0.10)
-              !important;
-
-            box-shadow:
-              0 8px 25px
-              rgba(0,0,0,0.18)
-              !important;
-
-          }
-
-
-          .nearsport-map
-          .leaflet-popup-tip {
-
-            background:
-              #ffffff
-              !important;
-
-          }
-
-
-          .nearsport-map
-          .leaflet-popup-content {
-
-            color:
-              #172427
-              !important;
-
-          }
-
-
-          .nearsport-map
-          .leaflet-popup-close-button {
-
-            color:
-              #455558
-              !important;
-
-          }
-
         `}
       </style>
-
-
-      {/* =====================================================
-          MAP
-      ====================================================== */}
 
       <MapContainer
         className="nearsport-map"
@@ -201,48 +112,50 @@ function NearSpotMap({ location, spots }) {
           position: "absolute",
           inset: 0,
           width: "100%",
-          height: "100dvh",
+          height: "100%",
           background: "#eef2f2",
         }}
       >
-
-        {/* =================================================
-            OPEN STREET MAP
-        ================================================== */}
+        {/* ============================================================
+            MAP TILES
+        ============================================================ */}
 
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
+        {/* ============================================================
+            MOVE MAP WHEN LOCATION CHANGES
+        ============================================================ */}
 
-        {/* =================================================
-            USER LOCATION
-        ================================================== */}
-
-        <UserLocationMarker
+        <MapLocationController
           location={location}
         />
 
+        {/* ============================================================
+            USER'S REAL GPS LOCATION
+        ============================================================ */}
 
-        {/* =================================================
-            HIDDEN SPOTS
-        ================================================== */}
+        {userLocation && (
+          <UserLocationMarker
+            location={userLocation}
+          />
+        )}
+
+        {/* ============================================================
+            NEARBY APPROVED SPOTS
+        ============================================================ */}
 
         {spots.map((spot) => (
-
           <SpotMarker
             key={spot.id}
             spot={spot}
           />
-
         ))}
-
       </MapContainer>
-
     </>
   );
 }
-
 
 export default NearSpotMap;

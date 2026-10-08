@@ -1,9 +1,13 @@
+import { useNavigate } from "react-router-dom";
+
 // ============================================================
 // NEARBY SPOT LIST
+// ============================================================
 // Displays nearby spots with images and details
 // ============================================================
 
 function NearbySpotList({ spots }) {
+  const navigate = useNavigate();
 
   // ============================================================
   // FORMAT DISTANCE
@@ -21,9 +25,9 @@ function NearbySpotList({ spots }) {
     return `${(meters / 1000).toFixed(1)} km away`;
   };
 
-
   // ============================================================
   // GET SPOT IMAGE
+  // ============================================================
   // Backend structure:
   //
   // media: [
@@ -37,7 +41,6 @@ function NearbySpotList({ spots }) {
   // ============================================================
 
   const getSpotImage = (spot) => {
-
     if (
       !spot.media ||
       !Array.isArray(spot.media) ||
@@ -53,6 +56,13 @@ function NearbySpotList({ spots }) {
     return imageMedia?.url || null;
   };
 
+  // ============================================================
+  // OPEN SPOT DETAILS
+  // ============================================================
+
+  const openSpotDetails = (spotId) => {
+    navigate(`/spot/${spotId}`);
+  };
 
   // ============================================================
   // EMPTY STATE
@@ -104,7 +114,6 @@ function NearbySpotList({ spots }) {
     );
   }
 
-
   // ============================================================
   // MAIN LIST
   // ============================================================
@@ -119,16 +128,14 @@ function NearbySpotList({ spots }) {
         overflow: "hidden",
       }}
     >
-
       {/* ======================================================
           HEADER
-      ====================================================== */}
+      ======================================================= */}
 
       <div
         style={{
           padding: "17px 20px",
-          borderBottom:
-            "1px solid rgba(20,40,45,0.08)",
+          borderBottom: "1px solid rgba(20,40,45,0.08)",
         }}
       >
         <div
@@ -155,10 +162,9 @@ function NearbySpotList({ spots }) {
         </div>
       </div>
 
-
       {/* ======================================================
           SCROLLABLE SPOT LIST
-      ====================================================== */}
+      ======================================================= */}
 
       <div
         style={{
@@ -166,9 +172,7 @@ function NearbySpotList({ spots }) {
           overflowY: "auto",
         }}
       >
-
         {spots.map((spot) => {
-
           const imageUrl = getSpotImage(spot);
 
           return (
@@ -181,13 +185,11 @@ function NearbySpotList({ spots }) {
                 background: "#ffffff",
               }}
             >
-
               {/* ==================================================
                   IMAGE
               ================================================== */}
 
               {imageUrl ? (
-
                 <img
                   src={imageUrl}
                   alt={spot.name}
@@ -202,9 +204,7 @@ function NearbySpotList({ spots }) {
                     event.currentTarget.style.display = "none";
                   }}
                 />
-
               ) : (
-
                 <div
                   style={{
                     width: "100%",
@@ -222,9 +222,7 @@ function NearbySpotList({ spots }) {
                 >
                   No image available
                 </div>
-
               )}
-
 
               {/* ==================================================
                   SPOT INFORMATION
@@ -235,7 +233,6 @@ function NearbySpotList({ spots }) {
                   marginTop: "12px",
                 }}
               >
-
                 {/* ==================================================
                     NAME + DISTANCE
                 ================================================== */}
@@ -248,14 +245,12 @@ function NearbySpotList({ spots }) {
                     gap: "10px",
                   }}
                 >
-
                   <div
                     style={{
                       flex: 1,
                       minWidth: 0,
                     }}
                   >
-
                     <div
                       style={{
                         color: "#1f2d30",
@@ -266,7 +261,6 @@ function NearbySpotList({ spots }) {
                     >
                       {spot.name}
                     </div>
-
 
                     {/* ==================================================
                         CATEGORY
@@ -282,9 +276,7 @@ function NearbySpotList({ spots }) {
                     >
                       {spot.category_name || "Hidden Spot"}
                     </div>
-
                   </div>
-
 
                   {/* ==================================================
                       DISTANCE
@@ -299,13 +291,9 @@ function NearbySpotList({ spots }) {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {formatDistance(
-                      spot.distance_meters
-                    )}
+                    {formatDistance(spot.distance_meters)}
                   </div>
-
                 </div>
-
 
                 {/* ==================================================
                     DESCRIPTION
@@ -328,34 +316,34 @@ function NearbySpotList({ spots }) {
                   </div>
                 )}
 
-
                 {/* ==================================================
                     MEDIA COUNT
                 ================================================== */}
 
-                {spot.media &&
-                  spot.media.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: "8px",
-                        color: "#7a888a",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {spot.media.length}{" "}
-                      {spot.media.length === 1
-                        ? "image"
-                        : "images"}
-                    </div>
-                  )}
-
+                {spot.media && spot.media.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      color: "#7a888a",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {spot.media.length}{" "}
+                    {spot.media.length === 1
+                      ? "image"
+                      : "images"}
+                  </div>
+                )}
 
                 {/* ==================================================
                     VIEW DETAILS
                 ================================================== */}
 
-                <div
+                <button
+                  type="button"
+                  className="btn btn-link p-0 text-decoration-none"
+                  onClick={() => openSpotDetails(spot.id)}
                   style={{
                     marginTop: "12px",
                     color: "#0aaa87",
@@ -364,20 +352,15 @@ function NearbySpotList({ spots }) {
                   }}
                 >
                   View Details →
-                </div>
-
+                </button>
               </div>
-
             </div>
           );
         })}
-
       </div>
-
     </div>
   );
 }
-
 
 // ============================================================
 // EXPORT

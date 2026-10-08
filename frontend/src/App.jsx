@@ -9,6 +9,7 @@ import useNearbySpots from "./hooks/useNearbySpots";
 
 import NearSpotMap from "./components/map/NearSpotMap";
 import RadiusSelector from "./components/location/RadiusSelector";
+import PlaceSearch from "./components/location/PlaceSearch";
 import NearbySpotList from "./components/spots/NearbySpotList";
 
 
@@ -38,6 +39,13 @@ function App() {
 
 
   // ============================================================
+  // ACTIVE MAP LOCATION
+  // ============================================================
+
+  const [mapLocation, setMapLocation] = useState(null);
+
+
+  // ============================================================
   // NEARBY SPOTS
   // ============================================================
 
@@ -45,7 +53,7 @@ function App() {
     spots,
     loading: spotsLoading,
     error: spotsError,
-  } = useNearbySpots(location, radius);
+  } = useNearbySpots(mapLocation, radius);
 
 
   // ============================================================
@@ -53,8 +61,23 @@ function App() {
   // ============================================================
 
   useEffect(() => {
+
     getCurrentLocation();
+
   }, []);
+
+
+  // ============================================================
+  // SYNC MAP LOCATION WITH USER LOCATION
+  // ============================================================
+
+  useEffect(() => {
+
+    if (location && !mapLocation) {
+      setMapLocation(location);
+    }
+
+  }, [location, mapLocation]);
 
 
   // ============================================================
@@ -69,6 +92,28 @@ function App() {
     "Mountains",
     "Viewpoints",
   ];
+
+
+  // ============================================================
+  // HANDLE PLACE SEARCH
+  // ============================================================
+
+  const handlePlaceSelect = (selectedLocation) => {
+
+    setMapLocation(selectedLocation);
+
+  };
+
+
+  // ============================================================
+  // HANDLE MY LOCATION
+  // ============================================================
+
+  const handleMyLocation = () => {
+
+    getCurrentLocation();
+
+  };
 
 
   // ============================================================
@@ -99,12 +144,14 @@ function App() {
           ================================================= */
 
           .nearsport-app {
+
             font-family:
               Inter,
               -apple-system,
               BlinkMacSystemFont,
               "Segoe UI",
               sans-serif;
+
           }
 
 
@@ -113,6 +160,7 @@ function App() {
           ================================================= */
 
           .ns-floating {
+
             background:
               rgba(255, 255, 255, 0.96);
 
@@ -128,6 +176,7 @@ function App() {
 
             -webkit-backdrop-filter:
               blur(14px);
+
           }
 
 
@@ -136,6 +185,7 @@ function App() {
           ================================================= */
 
           .ns-topbar {
+
             position:
               absolute;
 
@@ -162,6 +212,7 @@ function App() {
 
             pointer-events:
               none;
+
           }
 
 
@@ -170,6 +221,7 @@ function App() {
           ================================================= */
 
           .ns-logo {
+
             height:
               54px;
 
@@ -193,10 +245,12 @@ function App() {
 
             flex-shrink:
               0;
+
           }
 
 
           .ns-logo-icon {
+
             width:
               28px;
 
@@ -226,10 +280,12 @@ function App() {
 
             font-weight:
               800;
+
           }
 
 
           .ns-logo-title {
+
             font-size:
               16px;
 
@@ -241,16 +297,20 @@ function App() {
 
             line-height:
               1;
+
           }
 
 
           .ns-logo-title span {
+
             color:
               #12cfa4;
+
           }
 
 
           .ns-logo-subtitle {
+
             color:
               #7c8b8e;
 
@@ -259,6 +319,7 @@ function App() {
 
             margin-top:
               4px;
+
           }
 
 
@@ -267,6 +328,7 @@ function App() {
           ================================================= */
 
           .ns-search {
+
             height:
               54px;
 
@@ -293,10 +355,12 @@ function App() {
 
             max-width:
               560px;
+
           }
 
 
           .ns-search-icon {
+
             color:
               #16cda5;
 
@@ -305,15 +369,7 @@ function App() {
 
             margin-right:
               11px;
-          }
 
-
-          .ns-search-text {
-            color:
-              #6f7d80;
-
-            font-size:
-              13px;
           }
 
 
@@ -322,6 +378,7 @@ function App() {
           ================================================= */
 
           .ns-location-status {
+
             height:
               54px;
 
@@ -354,10 +411,12 @@ function App() {
 
             margin-left:
               auto;
+
           }
 
 
           .ns-location-dot {
+
             width:
               8px;
 
@@ -372,6 +431,7 @@ function App() {
 
             box-shadow:
               0 0 0 4px rgba(32, 217, 174, 0.15);
+
           }
 
 
@@ -380,6 +440,7 @@ function App() {
           ================================================= */
 
           .ns-profile {
+
             width:
               54px;
 
@@ -409,6 +470,7 @@ function App() {
 
             flex-shrink:
               0;
+
           }
 
 
@@ -417,11 +479,12 @@ function App() {
           ================================================= */
 
           .ns-categories {
+
             position:
               absolute;
 
             top:
-              80px;
+              78px;
 
             left:
               50%;
@@ -430,7 +493,7 @@ function App() {
               translateX(-50%);
 
             z-index:
-              1000;
+              900;
 
             display:
               flex;
@@ -449,16 +512,20 @@ function App() {
 
             scrollbar-width:
               none;
+
           }
 
 
           .ns-categories::-webkit-scrollbar {
+
             display:
               none;
+
           }
 
 
           .ns-category {
+
             border:
               1px solid rgba(20, 40, 45, 0.12);
 
@@ -491,10 +558,12 @@ function App() {
 
             cursor:
               pointer;
+
           }
 
 
           .ns-category.active {
+
             background:
               #20d9ae;
 
@@ -503,6 +572,7 @@ function App() {
 
             color:
               #06352b;
+
           }
 
 
@@ -511,6 +581,7 @@ function App() {
           ================================================= */
 
           .ns-map-controls {
+
             position:
               absolute;
 
@@ -534,10 +605,12 @@ function App() {
 
             gap:
               8px;
+
           }
 
 
           .ns-map-button {
+
             width:
               48px;
 
@@ -573,15 +646,18 @@ function App() {
 
             cursor:
               pointer;
+
           }
 
 
           .ns-map-button:hover {
+
             color:
               #10cda4;
 
             border-color:
               rgba(16, 205, 164, 0.35);
+
           }
 
 
@@ -590,6 +666,7 @@ function App() {
           ================================================= */
 
           .ns-radius {
+
             position:
               absolute;
 
@@ -616,10 +693,12 @@ function App() {
 
             border-radius:
               14px;
+
           }
 
 
           .ns-radius-label {
+
             color:
               #667578;
 
@@ -628,6 +707,7 @@ function App() {
 
             font-weight:
               600;
+
           }
 
 
@@ -636,6 +716,7 @@ function App() {
           ================================================= */
 
           .ns-spot-count {
+
             position:
               absolute;
 
@@ -668,10 +749,12 @@ function App() {
 
             white-space:
               nowrap;
+
           }
 
 
           .ns-count-number {
+
             color:
               #0fcda4;
 
@@ -680,10 +763,12 @@ function App() {
 
             font-weight:
               800;
+
           }
 
 
           .ns-count-text {
+
             color:
               #59696c;
 
@@ -692,6 +777,7 @@ function App() {
 
             font-weight:
               500;
+
           }
 
 
@@ -700,6 +786,7 @@ function App() {
           ================================================= */
 
           .ns-nearby-list {
+
             position:
               absolute;
 
@@ -717,6 +804,7 @@ function App() {
 
             z-index:
               1000;
+
           }
 
 
@@ -725,6 +813,7 @@ function App() {
           ================================================= */
 
           .ns-message {
+
             position:
               absolute;
 
@@ -760,6 +849,7 @@ function App() {
 
             font-size:
               12px;
+
           }
 
 
@@ -770,13 +860,17 @@ function App() {
           @media (max-width: 900px) {
 
             .ns-location-status {
+
               display:
                 none;
+
             }
 
             .ns-search {
+
               max-width:
                 none;
+
             }
 
           }
@@ -789,6 +883,7 @@ function App() {
           @media (max-width: 767px) {
 
             .ns-topbar {
+
               top:
                 10px;
 
@@ -800,10 +895,12 @@ function App() {
 
               gap:
                 7px;
+
             }
 
 
             .ns-logo {
+
               width:
                 50px;
 
@@ -815,26 +912,32 @@ function App() {
 
               justify-content:
                 center;
+
             }
 
 
             .ns-logo-icon {
+
               width:
                 27px;
 
               height:
                 27px;
+
             }
 
 
             .ns-logo-title,
             .ns-logo-subtitle {
+
               display:
                 none;
+
             }
 
 
             .ns-search {
+
               height:
                 50px;
 
@@ -843,19 +946,23 @@ function App() {
 
               padding:
                 0 13px;
+
             }
 
 
             .ns-profile {
+
               width:
                 50px;
 
               height:
                 50px;
+
             }
 
 
             .ns-categories {
+
               top:
                 70px;
 
@@ -870,19 +977,23 @@ function App() {
 
               transform:
                 none;
+
             }
 
 
             .ns-category {
+
               height:
                 35px;
 
               padding:
                 0 14px;
+
             }
 
 
             .ns-map-controls {
+
               left:
                 12px;
 
@@ -894,41 +1005,45 @@ function App() {
 
               transform:
                 none;
+
             }
 
 
             .ns-map-button {
+
               width:
                 43px;
 
               height:
                 43px;
+
             }
 
 
             .ns-radius {
+
               left:
                 12px;
 
               bottom:
                 14px;
+
             }
 
 
             .ns-spot-count {
+
               bottom:
                 14px;
 
               font-size:
                 10px;
+
             }
 
 
-            /* =================================================
-               NEARBY SPOT LIST - MOBILE
-            ================================================= */
-
             .ns-nearby-list {
+
               left:
                 12px;
 
@@ -943,6 +1058,7 @@ function App() {
 
               max-width:
                 none !important;
+
             }
 
           }
@@ -955,20 +1071,26 @@ function App() {
           @media (max-width: 480px) {
 
             .ns-spot-count {
+
               display:
                 none;
+
             }
 
 
             .ns-radius-label {
+
               display:
                 none;
+
             }
 
 
             .ns-message {
+
               top:
                 118px;
+
             }
 
           }
@@ -989,10 +1111,11 @@ function App() {
         }}
       >
 
-        {location ? (
+        {mapLocation ? (
 
           <NearSpotMap
-            location={location}
+            location={mapLocation}
+            userLocation={location}
             spots={spots}
           />
 
@@ -1073,13 +1196,9 @@ function App() {
 
         <div className="ns-floating ns-search">
 
-          <span className="ns-search-icon">
-            ⌕
-          </span>
-
-          <span className="ns-search-text">
-            Search places, waterfalls, hidden spots...
-          </span>
+          <PlaceSearch
+            onLocationSelect={handlePlaceSelect}
+          />
 
         </div>
 
@@ -1102,7 +1221,9 @@ function App() {
         ================================================== */}
 
         <div className="ns-floating ns-profile">
+
           ◉
+
         </div>
 
       </div>
@@ -1145,7 +1266,7 @@ function App() {
         <button
           type="button"
           className="ns-map-button"
-          onClick={getCurrentLocation}
+          onClick={handleMyLocation}
           title="My location"
         >
           ◎
@@ -1231,7 +1352,7 @@ function App() {
           SPOTS LOADING MESSAGE
       ====================================================== */}
 
-      {spotsLoading && location && (
+      {spotsLoading && mapLocation && (
 
         <div className="ns-message">
 
@@ -1267,9 +1388,7 @@ function App() {
             color: "#b42335",
           }}
         >
-
           Unable to load nearby spots.
-
         </div>
 
       )}
@@ -1327,7 +1446,7 @@ function App() {
             <button
               type="button"
               className="btn btn-sm btn-outline-secondary rounded-pill"
-              onClick={getCurrentLocation}
+              onClick={handleMyLocation}
             >
               Retry
             </button>

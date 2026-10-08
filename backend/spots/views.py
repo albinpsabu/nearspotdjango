@@ -133,7 +133,7 @@ class ApproveSpotView(APIView):
         )
 class ApprovedSpotDetailView(generics.RetrieveAPIView):
     serializer_class = ApprovedSpotSerializer
-    permission_classes = [IsUser]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return (
