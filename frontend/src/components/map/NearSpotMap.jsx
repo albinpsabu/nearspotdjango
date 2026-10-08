@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 
 import UserLocationMarker from "./UserLocationMarker";
 import SpotMarker from "./SpotMarker";
+import MapControls from "./MapControls";
 
 // ============================================================
 // MAP LOCATION CONTROLLER
@@ -25,20 +26,46 @@ function MapLocationController({ location }) {
     const longitude = Number(location.longitude);
 
     if (
-      Number.isNaN(latitude) ||
-      Number.isNaN(longitude)
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
     ) {
+      console.error(
+        "Invalid location received by map:",
+        location
+      );
+
       return;
     }
+
+    console.log(
+      "Map moving to searched location:",
+      latitude,
+      longitude
+    );
+
+    // ========================================================
+    // REFRESH LEAFLET MAP SIZE
+    // ========================================================
+
+    map.invalidateSize();
+
+    // ========================================================
+    // MOVE MAP TO SELECTED LOCATION
+    // ========================================================
 
     map.flyTo(
       [latitude, longitude],
       15,
       {
+        animate: true,
         duration: 1.2,
       }
     );
-  }, [location, map]);
+  }, [
+    location?.latitude,
+    location?.longitude,
+    map,
+  ]);
 
   return null;
 }
@@ -51,14 +78,25 @@ function NearSpotMap({
   location,
   userLocation,
   spots,
+  onMyLocation,
 }) {
   if (!location) {
     return null;
   }
 
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude)
+  ) {
+    return null;
+  }
+
   const position = [
-    Number(location.latitude),
-    Number(location.longitude),
+    latitude,
+    longitude,
   ];
 
   return (
@@ -102,12 +140,16 @@ function NearSpotMap({
         `}
       </style>
 
+      {/* ======================================================
+          MAP
+      ====================================================== */}
+
       <MapContainer
         className="nearsport-map"
         center={position}
         zoom={15}
         scrollWheelZoom={true}
-        zoomControl={true}
+        zoomControl={false}
         style={{
           position: "absolute",
           inset: 0,
@@ -116,26 +158,35 @@ function NearSpotMap({
           background: "#eef2f2",
         }}
       >
-        {/* ============================================================
-            MAP TILES
-        ============================================================ */}
+
+        {/* ====================================================
+            OPENSTREETMAP TILES
+        ==================================================== */}
 
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* ============================================================
-            MOVE MAP WHEN LOCATION CHANGES
-        ============================================================ */}
+        {/* ====================================================
+            SEARCHED LOCATION CONTROLLER
+        ==================================================== */}
 
         <MapLocationController
           location={location}
         />
 
-        {/* ============================================================
-            USER'S REAL GPS LOCATION
-        ============================================================ */}
+        {/* ====================================================
+            CUSTOM MAP CONTROLS
+        ==================================================== */}
+
+        <MapControls
+          onMyLocation={onMyLocation}
+        />
+
+        {/* ====================================================
+            USER GPS LOCATION
+        ==================================================== */}
 
         {userLocation && (
           <UserLocationMarker
@@ -143,9 +194,9 @@ function NearSpotMap({
           />
         )}
 
-        {/* ============================================================
+        {/* ====================================================
             NEARBY APPROVED SPOTS
-        ============================================================ */}
+        ==================================================== */}
 
         {spots.map((spot) => (
           <SpotMarker
@@ -153,9 +204,14 @@ function NearSpotMap({
             spot={spot}
           />
         ))}
+
       </MapContainer>
     </>
   );
 }
+
+// ============================================================
+// EXPORT
+// ============================================================
 
 export default NearSpotMap;

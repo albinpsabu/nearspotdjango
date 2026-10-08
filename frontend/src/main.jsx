@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import AppRoutes from "./routes/AppRoutes";
+import { AuthProvider } from "./context/AuthContext";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 
@@ -9,8 +10,12 @@ import "bootstrap/dist/css/bootstrap.min.css";
 // APPLICATION ENTRY POINT
 // ============================================================
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+ReactDOM.createRoot(
+  document.getElementById("root")
+).render(
   <React.StrictMode>
-    <AppRoutes />
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   </React.StrictMode>
 );

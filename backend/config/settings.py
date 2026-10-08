@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     # NearSpot apps
     'accounts',
     'spots',
+    'places',
 ]
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

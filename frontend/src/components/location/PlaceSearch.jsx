@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
+import api from "../../services/api";
+
 // ============================================================
 // CONFIGURATION
 // ============================================================
 
-const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const DEBOUNCE_DELAY = 300;
 
 // ============================================================
@@ -27,12 +28,18 @@ function PlaceSearch({ onLocationSelect }) {
   useEffect(() => {
     const searchQuery = query.trim();
 
-    // Clear previous timeout
+    // ============================================================
+    // CLEAR PREVIOUS TIMEOUT
+    // ============================================================
+
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    // Don't search for very short text
+    // ============================================================
+    // DON'T SEARCH FOR VERY SHORT TEXT
+    // ============================================================
+
     if (searchQuery.length < 2) {
       setResults([]);
       setLoading(false);
@@ -40,38 +47,40 @@ function PlaceSearch({ onLocationSelect }) {
       return;
     }
 
-    // Wait before sending request
+    // ============================================================
+    // WAIT BEFORE SENDING REQUEST
+    // ============================================================
+
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         setLoading(true);
         setError("");
 
-        const params = new URLSearchParams({
-          q: searchQuery,
-          format: "json",
-          addressdetails: "1",
-          limit: "8",
-          countrycodes: "in",
+        // ========================================================
+        // SEARCH THROUGH DJANGO BACKEND
+        // ========================================================
+
+        const response = await api.get("/places/search/", {
+          params: {
+            q: searchQuery,
+          },
         });
 
-        const response = await fetch(
-          `${NOMINATIM_URL}?${params.toString()}`,
-          {
-            headers: {
-              Accept: "application/json",
-            },
-          }
+        // ========================================================
+        // STORE SEARCH RESULTS
+        // ========================================================
+
+        setResults(
+          Array.isArray(response.data)
+            ? response.data
+            : []
+        );
+      } catch (err) {
+        console.error(
+          "Place search error:",
+          err
         );
 
-        if (!response.ok) {
-          throw new Error("Search request failed");
-        }
-
-        const data = await response.json();
-
-        setResults(data);
-      } catch (err) {
-        console.error("Place search error:", err);
         setResults([]);
         setError("Unable to search places.");
       } finally {
@@ -79,7 +88,10 @@ function PlaceSearch({ onLocationSelect }) {
       }
     }, DEBOUNCE_DELAY);
 
-    // Cleanup
+    // ============================================================
+    // CLEANUP
+    // ============================================================
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -92,30 +104,77 @@ function PlaceSearch({ onLocationSelect }) {
   // ============================================================
 
   const handleSelect = (result) => {
-    const latitude = Number(result.lat);
-    const longitude = Number(result.lon);
+    // ============================================================
+    // GET COORDINATES
+    // ============================================================
 
-    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    const latitude = Number(
+      result.latitude ?? result.lat
+    );
+
+    const longitude = Number(
+      result.longitude ?? result.lon
+    );
+
+    // ============================================================
+    // VALIDATE COORDINATES
+    // ============================================================
+
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      console.error(
+        "Invalid coordinates received from search result:",
+        result
+      );
+
+      setError(
+        "This place does not have valid location coordinates."
+      );
+
       return;
     }
+
+    // ============================================================
+    // CREATE SELECTED LOCATION
+    // ============================================================
 
     const selectedLocation = {
       latitude,
       longitude,
-      displayName: result.display_name,
+      displayName:
+        result.display_name ||
+        result.name ||
+        "Selected location",
     };
 
-    // Update input
-    setQuery(result.display_name);
+    // ============================================================
+    // UPDATE INPUT
+    // ============================================================
 
-    // Close suggestions
+    setQuery(
+      result.display_name ||
+      result.name ||
+      ""
+    );
+
+    // ============================================================
+    // CLOSE SUGGESTIONS
+    // ============================================================
+
     setResults([]);
 
-    // Clear error
+    // ============================================================
+    // CLEAR ERROR
+    // ============================================================
+
     setError("");
 
-    // IMPORTANT:
-    // Only here do we move the map.
+    // ============================================================
+    // SEND LOCATION TO PARENT
+    // ============================================================
+
     onLocationSelect(selectedLocation);
   };
 
@@ -131,6 +190,10 @@ function PlaceSearch({ onLocationSelect }) {
         handleSelect(results[0]);
       }
     }
+
+    // ============================================================
+    // CLOSE SUGGESTIONS WITH ESCAPE
+    // ============================================================
 
     if (event.key === "Escape") {
       setResults([]);
@@ -165,18 +228,29 @@ function PlaceSearch({ onLocationSelect }) {
       address.town ||
       address.village ||
       result.name ||
-      result.display_name.split(",")[0]
+      result.display_name?.split(",")[0] ||
+      "Unknown place"
     );
   };
 
+  // ============================================================
+  // GET RESULT SUBTITLE
+  // ============================================================
+
   const getResultSubtitle = (result) => {
-    const parts = result.display_name.split(",");
+    const displayName =
+      result.display_name || "";
+
+    const parts = displayName.split(",");
 
     if (parts.length <= 1) {
       return "";
     }
 
-    return parts.slice(1, 4).join(",").trim();
+    return parts
+      .slice(1, 4)
+      .join(",")
+      .trim();
   };
 
   // ============================================================
@@ -185,6 +259,7 @@ function PlaceSearch({ onLocationSelect }) {
 
   return (
     <div className="position-relative w-100">
+
       {/* ========================================================
           SEARCH INPUT
       ======================================================== */}
@@ -196,7 +271,10 @@ function PlaceSearch({ onLocationSelect }) {
           width: "100%",
         }}
       >
-        {/* Search Icon */}
+
+        {/* ======================================================
+            SEARCH ICON
+        ====================================================== */}
 
         <span
           className="me-2"
@@ -209,13 +287,17 @@ function PlaceSearch({ onLocationSelect }) {
           🔍
         </span>
 
-        {/* Input */}
+        {/* ======================================================
+            INPUT
+        ====================================================== */}
 
         <input
           ref={inputRef}
           type="text"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) =>
+            setQuery(event.target.value)
+          }
           onKeyDown={handleKeyDown}
           placeholder="Search places, restaurants, hotels..."
           autoComplete="off"
@@ -228,7 +310,9 @@ function PlaceSearch({ onLocationSelect }) {
           }}
         />
 
-        {/* Loading */}
+        {/* ======================================================
+            LOADING
+        ====================================================== */}
 
         {loading && (
           <div
@@ -245,7 +329,9 @@ function PlaceSearch({ onLocationSelect }) {
           </div>
         )}
 
-        {/* Clear Button */}
+        {/* ======================================================
+            CLEAR BUTTON
+        ====================================================== */}
 
         {query && !loading && (
           <button
@@ -284,11 +370,19 @@ function PlaceSearch({ onLocationSelect }) {
             overflowY: "auto",
           }}
         >
+
           {results.map((result, index) => (
             <button
-              key={`${result.place_id}-${index}`}
+              key={`${
+                result.place_id ||
+                result.osm_id ||
+                result.id ||
+                index
+              }-${index}`}
               type="button"
-              onClick={() => handleSelect(result)}
+              onClick={() =>
+                handleSelect(result)
+              }
               className="w-100 text-start border-0 bg-white"
               style={{
                 padding: "12px 15px",
@@ -297,7 +391,8 @@ function PlaceSearch({ onLocationSelect }) {
                     ? "1px solid #f1f5f9"
                     : "none",
                 cursor: "pointer",
-                transition: "background 0.15s ease",
+                transition:
+                  "background 0.15s ease",
               }}
               onMouseEnter={(event) => {
                 event.currentTarget.style.background =
@@ -308,8 +403,12 @@ function PlaceSearch({ onLocationSelect }) {
                   "#ffffff";
               }}
             >
+
               <div className="d-flex align-items-start">
-                {/* Location Icon */}
+
+                {/* ==================================================
+                    LOCATION ICON
+                ================================================== */}
 
                 <div
                   className="d-flex align-items-center justify-content-center me-3"
@@ -326,7 +425,9 @@ function PlaceSearch({ onLocationSelect }) {
                   📍
                 </div>
 
-                {/* Result Information */}
+                {/* ==================================================
+                    RESULT INFORMATION
+                ================================================== */}
 
                 <div
                   className="flex-grow-1"
@@ -334,6 +435,7 @@ function PlaceSearch({ onLocationSelect }) {
                     minWidth: 0,
                   }}
                 >
+
                   <div
                     style={{
                       fontSize: "14px",
@@ -355,8 +457,10 @@ function PlaceSearch({ onLocationSelect }) {
                   >
                     {getResultSubtitle(result)}
                   </div>
+
                 </div>
               </div>
+
             </button>
           ))}
         </div>
@@ -421,6 +525,7 @@ function PlaceSearch({ onLocationSelect }) {
           </div>
         </div>
       )}
+
     </div>
   );
 }
