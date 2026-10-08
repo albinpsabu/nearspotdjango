@@ -1,3 +1,7 @@
+// ============================================================
+// IMPORTS
+// ============================================================
+
 import { useEffect, useRef, useState } from "react";
 
 import api from "../../services/api";
@@ -273,21 +277,6 @@ function PlaceSearch({ onLocationSelect }) {
       >
 
         {/* ======================================================
-            SEARCH ICON
-        ====================================================== */}
-
-        <span
-          className="me-2"
-          style={{
-            fontSize: "20px",
-            color: "#64748b",
-            flexShrink: 0,
-          }}
-        >
-          🔍
-        </span>
-
-        {/* ======================================================
             INPUT
         ====================================================== */}
 
@@ -349,6 +338,7 @@ function PlaceSearch({ onLocationSelect }) {
             ×
           </button>
         )}
+
       </div>
 
       {/* ========================================================
@@ -435,7 +425,6 @@ function PlaceSearch({ onLocationSelect }) {
                     minWidth: 0,
                   }}
                 >
-
                   <div
                     style={{
                       fontSize: "14px",
@@ -457,12 +446,13 @@ function PlaceSearch({ onLocationSelect }) {
                   >
                     {getResultSubtitle(result)}
                   </div>
-
                 </div>
+
               </div>
 
             </button>
           ))}
+
         </div>
       )}
 

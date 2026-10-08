@@ -13,7 +13,6 @@ import NearbySpotList from "./components/spots/NearbySpotList";
 import SpotCount from "./components/spots/SpotCount";
 import StatusMessage from "./components/common/StatusMessage";
 import TopNavigation from "./components/layout/TopNavigation";
-import CategoryFilters from "./components/categories/CategoryFilters";
 
 // ============================================================
 // APP COMPONENT
@@ -70,19 +69,6 @@ function App() {
       setMapLocation(location);
     }
   }, [location, mapLocation]);
-
-  // ============================================================
-  // CATEGORY LIST
-  // ============================================================
-
-  const categories = [
-    "All",
-    "Nature",
-    "Food",
-    "Waterfalls",
-    "Mountains",
-    "Viewpoints",
-  ];
 
   // ============================================================
   // HANDLE PLACE SEARCH
@@ -173,14 +159,6 @@ function App() {
 
       <TopNavigation
         onLocationSelect={handlePlaceSelect}
-      />
-
-      {/* ======================================================
-          CATEGORY FILTERS
-      ======================================================= */}
-
-      <CategoryFilters
-        categories={categories}
       />
 
       {/* ======================================================
