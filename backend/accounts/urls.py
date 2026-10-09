@@ -12,7 +12,8 @@ from .views import (
     AdminUserStatusView,
     ChangePasswordView,
     PasswordResetRequestView,
-    PasswordResetConfirmView
+    PasswordResetConfirmView,
+    AdminDashboardStatsView
 )
 
 
@@ -73,6 +74,14 @@ urlpatterns = [
     "password-reset/confirm/",
     PasswordResetConfirmView.as_view(),
     name="password-reset-confirm",
+    ),
+
+
+
+    path(
+    "admin-dashboard/",
+    AdminDashboardStatsView.as_view(),
+    name="admin-dashboard-stats",
     ),
 
 

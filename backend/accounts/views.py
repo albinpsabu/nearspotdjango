@@ -244,3 +244,100 @@ class PasswordResetConfirmView(generics.GenericAPIView):
             {"message": "Password reset successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+
+
+
+
+# ============================================================
+# ADMIN DASHBOARD STATISTICS
+# ============================================================
+
+from django.db.models import Count, Q
+
+from spots.models import HiddenSpot, Category, Report
+
+
+class AdminDashboardStatsView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        # ----------------------------------------------------
+        # USER STATISTICS
+        # ----------------------------------------------------
+
+        users = User.objects.filter(
+            role=User.Role.USER
+        ).count()
+
+        employees = User.objects.filter(
+            role=User.Role.EMPLOYEE
+        ).count()
+
+        admins = User.objects.filter(
+            role=User.Role.ADMIN
+        ).count()
+
+        # ----------------------------------------------------
+        # HIDDEN SPOT STATISTICS
+        # ----------------------------------------------------
+
+        spot_stats = HiddenSpot.objects.aggregate(
+            total=Count("id"),
+            pending=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.PENDING),
+            ),
+            approved=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.APPROVED),
+            ),
+            rejected=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.REJECTED),
+            ),
+            cancelled=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.CANCELLED),
+            ),
+        )
+
+        # ----------------------------------------------------
+        # REPORT STATISTICS
+        # ----------------------------------------------------
+
+        report_stats = Report.objects.aggregate(
+            total=Count("id"),
+            pending=Count(
+                "id",
+                filter=Q(status=Report.Status.PENDING),
+            ),
+            reviewed=Count(
+                "id",
+                filter=Q(status=Report.Status.REVIEWED),
+            ),
+            resolved=Count(
+                "id",
+                filter=Q(status=Report.Status.RESOLVED),
+            ),
+        )
+
+        # ----------------------------------------------------
+        # CATEGORY STATISTICS
+        # ----------------------------------------------------
+
+        categories = Category.objects.count()
+
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
+
+        return Response({
+            "users": users,
+            "employees": employees,
+            "admins": admins,
+            "spots": spot_stats,
+            "reports": report_stats,
+            "categories": categories,
+        })

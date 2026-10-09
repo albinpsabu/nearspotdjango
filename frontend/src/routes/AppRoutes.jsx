@@ -1,8 +1,19 @@
+// ============================================================
+// IMPORTS
+// ============================================================
+
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import App from "../App";
 import SpotDetails from "../pages/public/SpotDetails";
 import Login from "../pages/auth/Login";
+
+import AdminDashboard from "../pages/admin/AdminDashboard";
+import AdminSpots from "../pages/admin/AdminSpots";
+import AdminUsers from "../pages/admin/AdminUsers";
+import AdminEmployees from "../pages/admin/AdminEmployees";
+import AdminCategories from "../pages/admin/AdminCategories";
+import AdminReports from "../pages/admin/AdminReports";
 
 // ============================================================
 // APPLICATION ROUTES
@@ -38,6 +49,60 @@ function AppRoutes() {
         <Route
           path="/login"
           element={<Login />}
+        />
+
+        {/* ====================================================
+            ADMIN DASHBOARD
+        ===================================================== */}
+
+        <Route
+          path="/admin"
+          element={<AdminDashboard />}
+        />
+
+        {/* ====================================================
+            ADMIN SPOTS
+        ===================================================== */}
+
+        <Route
+          path="/admin/spots"
+          element={<AdminSpots />}
+        />
+
+        {/* ====================================================
+            ADMIN USERS
+        ===================================================== */}
+
+        <Route
+          path="/admin/users"
+          element={<AdminUsers />}
+        />
+
+        {/* ====================================================
+            ADMIN EMPLOYEES
+        ===================================================== */}
+
+        <Route
+          path="/admin/employees"
+          element={<AdminEmployees />}
+        />
+
+        {/* ====================================================
+            ADMIN CATEGORIES
+        ===================================================== */}
+
+        <Route
+          path="/admin/categories"
+          element={<AdminCategories />}
+        />
+
+        {/* ====================================================
+            ADMIN REPORTS
+        ===================================================== */}
+
+        <Route
+          path="/admin/reports"
+          element={<AdminReports />}
         />
 
       </Routes>
