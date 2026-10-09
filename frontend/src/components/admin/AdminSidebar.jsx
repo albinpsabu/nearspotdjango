@@ -1,52 +1,46 @@
-// ============================================================
-// IMPORTS
-// ============================================================
 
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 // ============================================================
 // ADMIN SIDEBAR
 // ============================================================
 
-function AdminSidebar() {
+function AdminSidebar({
+  collapsed = false,
+  mobile = false,
+  onClose,
+  onNavigate,
+}) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // ============================================================
   // NAVIGATION ITEMS
   // ============================================================
 
   const navigationItems = [
-    {
-      label: "Dashboard",
-      path: "/admin",
-      icon: "▦",
-    },
-    {
-      label: "Spots",
-      path: "/admin/spots",
-      icon: "⌖",
-    },
-    {
-      label: "Users",
-      path: "/admin/users",
-      icon: "♙",
-    },
-    {
-      label: "Employees",
-      path: "/admin/employees",
-      icon: "♟",
-    },
-    {
-      label: "Categories",
-      path: "/admin/categories",
-      icon: "▤",
-    },
-    {
-      label: "Reports",
-      path: "/admin/reports",
-      icon: "⚑",
-    },
+    { label: "Dashboard", path: "/admin", icon: "▦" },
+    { label: "Spots", path: "/admin/spots", icon: "⌖" },
+    { label: "Users", path: "/admin/users", icon: "♙" },
+    { label: "Employees", path: "/admin/employees", icon: "♟" },
+    { label: "Categories", path: "/admin/categories", icon: "▤" },
+    { label: "Reports", path: "/admin/reports", icon: "⚑" },
   ];
+
+  // ============================================================
+  // ACTIVE ROUTE
+  // ============================================================
+
+  const isActiveRoute = (path) => {
+    if (path === "/admin") {
+      return location.pathname === "/admin";
+    }
+
+    return (
+      location.pathname === path ||
+      location.pathname.startsWith(`${path}/`)
+    );
+  };
 
   // ============================================================
   // NAVIGATION HANDLER
@@ -54,18 +48,25 @@ function AdminSidebar() {
 
   const handleNavigation = (path) => {
     navigate(path);
+
+    if (onNavigate) {
+      onNavigate();
+    }
   };
 
   // ============================================================
-  // RENDER
+  // SIDEBAR CONTENT
   // ============================================================
 
   return (
     <aside
-      className="d-none d-lg-flex flex-column flex-shrink-0 bg-white border-end"
+      className="d-flex flex-column h-100 bg-white"
       style={{
-        width: "250px",
+        width: "100%",
         minHeight: "100vh",
+        borderRight: "1px solid #e8eeee",
+        overflowX: "hidden",
+        overflowY: "auto",
       }}
     >
       {/* ======================================================
@@ -73,119 +74,233 @@ function AdminSidebar() {
       ======================================================= */}
 
       <div
-        className="d-flex align-items-center gap-2 px-4 border-bottom"
+        className={`d-flex align-items-center ${
+          collapsed && !mobile
+            ? "justify-content-center px-2"
+            : "justify-content-between px-3 px-xl-4"
+        } border-bottom flex-shrink-0`}
         style={{
           height: "72px",
+          minHeight: "72px",
         }}
       >
         <div
-          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
-          style={{
-            width: "36px",
-            height: "36px",
-            backgroundColor: "#20d9ae",
-            fontSize: "17px",
-          }}
+          className={`d-flex align-items-center ${
+            collapsed && !mobile ? "" : "gap-2"
+          }`}
         >
-          N
-        </div>
-
-        <div>
           <div
-            className="fw-bold lh-1"
+            className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
             style={{
-              color: "#162326",
+              width: "38px",
+              height: "38px",
+              backgroundColor: "#20cfa7",
               fontSize: "18px",
+              boxShadow: "0 4px 12px rgba(32, 207, 167, 0.2)",
             }}
           >
-            Near<span style={{ color: "#12cfa4" }}>Spot</span>
+            N
           </div>
 
-          <div
-            className="mt-1"
+          {(!collapsed || mobile) && (
+            <div>
+              <div
+                className="fw-bold"
+                style={{
+                  color: "#162326",
+                  fontSize: "18px",
+                  letterSpacing: "-0.5px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Near<span style={{ color: "#12b995" }}>Spot</span>
+              </div>
+
+              <div
+                className="mt-1"
+                style={{
+                  color: "#899597",
+                  fontSize: "10px",
+                }}
+              >
+                Administration
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* MOBILE CLOSE BUTTON */}
+
+        {mobile && (
+          <button
+            type="button"
+            className="btn btn-light border-0 rounded-3"
+            onClick={onClose}
+            aria-label="Close sidebar"
             style={{
-              color: "#899597",
-              fontSize: "10px",
+              width: "34px",
+              height: "34px",
+              color: "#536366",
+              fontSize: "19px",
+              lineHeight: 1,
             }}
           >
-            Administration
-          </div>
-        </div>
+            ×
+          </button>
+        )}
       </div>
 
       {/* ======================================================
           NAVIGATION
       ======================================================= */}
 
-      <nav className="flex-grow-1 p-3">
-        <div
-          className="text-uppercase fw-semibold px-3 mb-2"
-          style={{
-            color: "#9aa6a8",
-            fontSize: "10px",
-            letterSpacing: "0.08em",
-          }}
-        >
-          Management
-        </div>
+      <nav className={`flex-grow-1 ${collapsed && !mobile ? "p-2" : "p-3"}`}>
+        {(!collapsed || mobile) && (
+          <div
+            className="text-uppercase fw-semibold px-3 mb-3 mt-1"
+            style={{
+              color: "#a0aaaa",
+              fontSize: "10px",
+              letterSpacing: "0.1em",
+            }}
+          >
+            Management
+          </div>
+        )}
 
         <div className="d-flex flex-column gap-1">
-          {navigationItems.map((item) => (
-            <button
-              key={item.path}
-              type="button"
-              className="btn border-0 w-100 d-flex align-items-center gap-3 text-start rounded-3 px-3 py-2"
-              onClick={() => handleNavigation(item.path)}
-              style={{
-                color: "#536366",
-                fontSize: "13px",
-                fontWeight: 500,
-              }}
-            >
-              <span
-                className="d-flex align-items-center justify-content-center flex-shrink-0"
+          {navigationItems.map((item) => {
+            const active = isActiveRoute(item.path);
+
+            return (
+              <button
+                key={item.path}
+                type="button"
+                title={collapsed && !mobile ? item.label : undefined}
+                aria-label={item.label}
+                aria-current={active ? "page" : undefined}
+                onClick={() => handleNavigation(item.path)}
+                className="btn border-0 w-100 d-flex align-items-center rounded-3"
                 style={{
-                  width: "22px",
-                  fontSize: "17px",
-                  color: "#687779",
+                  minHeight: "44px",
+                  justifyContent:
+                    collapsed && !mobile ? "center" : "flex-start",
+                  gap: collapsed && !mobile ? 0 : "13px",
+                  padding:
+                    collapsed && !mobile ? "10px 0" : "10px 13px",
+                  color: active ? "#087f68" : "#637174",
+                  backgroundColor: active ? "#e8f8f3" : "transparent",
+                  fontSize: "13px",
+                  fontWeight: active ? 650 : 500,
+                  boxShadow: active
+                    ? "inset 3px 0 0 #20cfa7"
+                    : "none",
+                  transition:
+                    "background-color 0.15s ease, color 0.15s ease",
+                }}
+                onMouseEnter={(event) => {
+                  if (!active) {
+                    event.currentTarget.style.backgroundColor = "#f5f8f7";
+                  }
+                }}
+                onMouseLeave={(event) => {
+                  if (!active) {
+                    event.currentTarget.style.backgroundColor = "transparent";
+                  }
                 }}
               >
-                {item.icon}
-              </span>
+                <span
+                  className="d-flex align-items-center justify-content-center flex-shrink-0"
+                  style={{
+                    width: "23px",
+                    height: "23px",
+                    fontSize: "19px",
+                    color: active ? "#0b9b7d" : "#82908f",
+                  }}
+                >
+                  {item.icon}
+                </span>
 
-              <span>{item.label}</span>
-            </button>
-          ))}
+                {(!collapsed || mobile) && (
+                  <>
+                    <span className="flex-grow-1 text-start">
+                      {item.label}
+                    </span>
+
+                    {active && (
+                      <span
+                        className="rounded-circle flex-shrink-0"
+                        style={{
+                          width: "6px",
+                          height: "6px",
+                          backgroundColor: "#20cfa7",
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+              </button>
+            );
+          })}
         </div>
       </nav>
 
       {/* ======================================================
-          BOTTOM SECTION
+          SIDEBAR BOTTOM
       ======================================================= */}
 
-      <div className="p-3 border-top">
+      <div
+        className={`border-top flex-shrink-0 ${
+          collapsed && !mobile ? "p-2" : "p-3"
+        }`}
+      >
         <button
           type="button"
-          className="btn border-0 w-100 d-flex align-items-center gap-3 text-start rounded-3 px-3 py-2"
-          onClick={() => navigate("/")}
+          title={
+            collapsed && !mobile ? "Back to NearSpot" : undefined
+          }
+          aria-label="Back to NearSpot"
+          className="btn border-0 w-100 d-flex align-items-center rounded-3"
+          onClick={() => handleNavigation("/")}
           style={{
+            justifyContent:
+              collapsed && !mobile ? "center" : "flex-start",
+            gap: collapsed && !mobile ? 0 : "13px",
+            padding:
+              collapsed && !mobile ? "10px 0" : "10px 13px",
             color: "#687779",
-            fontSize: "13px",
+            backgroundColor: "transparent",
+            fontSize: "12px",
             fontWeight: 500,
+            minHeight: "44px",
           }}
         >
           <span
-            className="d-flex align-items-center justify-content-center"
+            className="d-flex align-items-center justify-content-center flex-shrink-0"
             style={{
-              width: "22px",
-              fontSize: "16px",
+              width: "23px",
+              fontSize: "19px",
             }}
           >
             ←
           </span>
 
-          <span>Back to NearSpot</span>
+          {(!collapsed || mobile) && (
+            <span>Back to NearSpot</span>
+          )}
         </button>
+
+        {(!collapsed || mobile) && (
+          <div
+            className="mt-3 px-2"
+            style={{
+              color: "#a1acab",
+              fontSize: "10px",
+            }}
+          >
+            NearSpot Admin Panel
+          </div>
+        )}
       </div>
     </aside>
   );

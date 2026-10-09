@@ -341,3 +341,44 @@ class AdminDashboardStatsView(APIView):
             "reports": report_stats,
             "categories": categories,
         })
+
+
+
+
+
+# ============================================================
+# ADMIN EMPLOYEE STATUS MANAGEMENT
+# ============================================================
+
+class AdminEmployeeStatusView(APIView):
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, pk):
+        try:
+            employee = User.objects.get(
+                pk=pk,
+                role=User.Role.EMPLOYEE,
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Employee not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = AdminUserStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        employee.is_active = serializer.validated_data["is_active"]
+        employee.save(update_fields=["is_active"])
+
+        return Response(
+            {
+                "message": "Employee status updated successfully.",
+                "user_id": employee.id,
+                "name": employee.name,
+                "email": employee.email,
+                "role": employee.role,
+                "is_active": employee.is_active,
+            },
+            status=status.HTTP_200_OK,
+        )

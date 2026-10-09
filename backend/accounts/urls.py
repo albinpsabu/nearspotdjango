@@ -13,7 +13,8 @@ from .views import (
     ChangePasswordView,
     PasswordResetRequestView,
     PasswordResetConfirmView,
-    AdminDashboardStatsView
+    AdminDashboardStatsView,
+    AdminEmployeeStatusView
 )
 
 
@@ -85,4 +86,10 @@ urlpatterns = [
     ),
 
 
+
+    path(
+    "employees/<int:pk>/status/",
+    AdminEmployeeStatusView.as_view(),
+    name="admin-employee-status",
+    ),
 ]

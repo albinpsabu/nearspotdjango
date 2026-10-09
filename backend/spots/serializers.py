@@ -1,6 +1,8 @@
+
 from rest_framework import serializers
 from django.contrib.gis.geos import Point
-from .utils import compress_image
+
+from .utils import compress_image, compress_video
 
 from .models import (
     Category,
@@ -9,8 +11,13 @@ from .models import (
     Report,
     CommunityVerification,
     SpotMedia,
-    AuditLog
+    AuditLog,
 )
+
+
+# =========================
+# CATEGORY SERIALIZER
+# =========================
 
 class CategorySerializer(serializers.ModelSerializer):
 
@@ -24,7 +31,6 @@ class CategorySerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-
         read_only_fields = [
             "id",
             "created_at",
@@ -32,17 +38,22 @@ class CategorySerializer(serializers.ModelSerializer):
         ]
 
 
+# =========================
+# HIDDEN SPOT SERIALIZER
+# =========================
+
 class HiddenSpotSerializer(serializers.ModelSerializer):
+
     name = serializers.CharField(
-    required=True,
-    allow_blank=True
-)
+        required=True,
+        allow_blank=True,
+    )
+
     latitude = serializers.FloatField(write_only=True)
     longitude = serializers.FloatField(write_only=True)
 
     class Meta:
         model = HiddenSpot
-
         fields = [
             "id",
             "name",
@@ -53,12 +64,12 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
         ]
-
         read_only_fields = [
             "id",
             "status",
             "created_at",
         ]
+
     def validate_name(self, name):
         name = name.strip()
 
@@ -69,21 +80,16 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
 
         return name
 
-
     def validate_description(self, description):
-        description = description.strip()
-        return description
+        return description.strip()
 
     def validate_category(self, category):
-
         if not category.is_active:
             raise serializers.ValidationError(
                 "This category is not active."
             )
 
         return category
-
-
 
     def validate_latitude(self, latitude):
         if not -90 <= latitude <= 90:
@@ -102,40 +108,44 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
         return longitude
 
     def create(self, validated_data):
-
         latitude = validated_data.pop("latitude")
         longitude = validated_data.pop("longitude")
 
         location = Point(
             longitude,
             latitude,
-            srid=4326
+            srid=4326,
         )
 
         spot = HiddenSpot.objects.create(
             location=location,
             submitted_by=self.context["request"].user,
             status=HiddenSpot.Status.PENDING,
-            **validated_data
+            **validated_data,
         )
 
         return spot
+
+
+# =========================
+# PENDING SPOT SERIALIZER
+# =========================
 
 class PendingSpotSerializer(serializers.ModelSerializer):
 
     category_name = serializers.CharField(
         source="category.name",
-        read_only=True
+        read_only=True,
     )
 
     submitted_by_name = serializers.CharField(
         source="submitted_by.name",
-        read_only=True
+        read_only=True,
     )
 
     submitted_by_email = serializers.CharField(
         source="submitted_by.email",
-        read_only=True
+        read_only=True,
     )
 
     latitude = serializers.SerializerMethodField()
@@ -143,7 +153,6 @@ class PendingSpotSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = HiddenSpot
-
         fields = [
             "id",
             "name",
@@ -165,6 +174,10 @@ class PendingSpotSerializer(serializers.ModelSerializer):
         return obj.location.x
 
 
+# =========================
+# VERIFICATION SERIALIZER
+# =========================
+
 class VerificationSerializer(serializers.ModelSerializer):
 
     class Meta:
@@ -177,7 +190,6 @@ class VerificationSerializer(serializers.ModelSerializer):
             "reason",
             "created_at",
         ]
-
         read_only_fields = [
             "id",
             "employee",
@@ -185,10 +197,15 @@ class VerificationSerializer(serializers.ModelSerializer):
         ]
 
 
+# =========================
+# APPROVED SPOT SERIALIZER
+# =========================
+
 class ApprovedSpotSerializer(serializers.ModelSerializer):
+
     category_name = serializers.CharField(
         source="category.name",
-        read_only=True
+        read_only=True,
     )
 
     latitude = serializers.SerializerMethodField()
@@ -228,7 +245,6 @@ class ApprovedSpotSerializer(serializers.ModelSerializer):
 
     def get_media(self, obj):
         request = self.context.get("request")
-
         media_list = []
 
         for media in obj.media.all():
@@ -248,10 +264,16 @@ class ApprovedSpotSerializer(serializers.ModelSerializer):
 
         return media_list
 
+
+# =========================
+# MY SPOT SERIALIZER
+# =========================
+
 class MySpotSerializer(serializers.ModelSerializer):
+
     category_name = serializers.CharField(
         source="category.name",
-        read_only=True
+        read_only=True,
     )
 
     latitude = serializers.SerializerMethodField()
@@ -271,7 +293,6 @@ class MySpotSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "created_at",
         ]
-
         read_only_fields = [
             "id",
             "status",
@@ -286,19 +307,40 @@ class MySpotSerializer(serializers.ModelSerializer):
         return obj.location.x
 
 
-
+# =========================
+# REPORT SERIALIZER
+# =========================
 
 class ReportSerializer(serializers.ModelSerializer):
+
+    spot_name = serializers.CharField(
+        source="spot.name",
+        read_only=True,
+    )
+
+    reported_by_name = serializers.CharField(
+        source="reported_by.name",
+        read_only=True,
+    )
+
+    reported_by_email = serializers.EmailField(
+        source="reported_by.email",
+        read_only=True,
+    )
+
     class Meta:
         model = Report
         fields = [
             "id",
             "spot",
+            "spot_name",
+            "reported_by",
+            "reported_by_name",
+            "reported_by_email",
             "reason",
             "status",
             "created_at",
         ]
-
         read_only_fields = [
             "id",
             "status",
@@ -314,8 +356,12 @@ class ReportSerializer(serializers.ModelSerializer):
         return spot
 
 
+# =========================
+# REPORT STATUS SERIALIZER
+# =========================
 
 class ReportStatusSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Report
         fields = ["status"]
@@ -334,8 +380,12 @@ class ReportStatusSerializer(serializers.ModelSerializer):
         return value
 
 
+# =========================
+# COMMUNITY VERIFICATION SERIALIZER
+# =========================
 
 class CommunityVerificationSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = CommunityVerification
         fields = [
@@ -358,11 +408,15 @@ class CommunityVerificationSerializer(serializers.ModelSerializer):
         return spot
 
 
+# =========================
+# COMMUNITY SPOT SERIALIZER
+# =========================
 
 class CommunitySpotSerializer(serializers.ModelSerializer):
+
     category_name = serializers.CharField(
         source="category.name",
-        read_only=True
+        read_only=True,
     )
 
     latitude = serializers.SerializerMethodField()
@@ -381,7 +435,6 @@ class CommunitySpotSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
         ]
-
         read_only_fields = [
             "id",
             "status",
@@ -395,16 +448,23 @@ class CommunitySpotSerializer(serializers.ModelSerializer):
         return obj.location.x
 
 
-
+# =========================
+# COMMUNITY VERIFICATION SUMMARY
+# =========================
 
 class CommunityVerificationSummarySerializer(serializers.Serializer):
+
     confirm_count = serializers.IntegerField()
     report_count = serializers.IntegerField()
     community_status = serializers.CharField()
 
 
+# =========================
+# SPOT MEDIA SERIALIZER
+# =========================
 
 class SpotMediaSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = SpotMedia
         fields = [
@@ -428,9 +488,10 @@ class SpotMediaSerializer(serializers.ModelSerializer):
                 "file": "A file is required."
             })
 
-        # -------------------------
+        # =========================
         # IMAGE VALIDATION
-        # -------------------------
+        # =========================
+
         if media_type == SpotMedia.MediaType.IMAGE:
 
             allowed_types = [
@@ -441,18 +502,20 @@ class SpotMediaSerializer(serializers.ModelSerializer):
 
             if file.content_type not in allowed_types:
                 raise serializers.ValidationError({
-                    "file": "Only JPG, PNG, and WEBP images are allowed."
+                    "file": (
+                        "Only JPG, PNG, and WEBP images are allowed."
+                    )
                 })
 
-            # Maximum original upload size: 10 MB
             if file.size > 10 * 1024 * 1024:
                 raise serializers.ValidationError({
                     "file": "Image size cannot exceed 10 MB."
                 })
 
-        # -------------------------
+        # =========================
         # VIDEO VALIDATION
-        # -------------------------
+        # =========================
+
         elif media_type == SpotMedia.MediaType.VIDEO:
 
             allowed_types = [
@@ -469,11 +532,11 @@ class SpotMediaSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "file": (
                         "Unsupported video format. "
-                        "Allowed formats: MP4, WEBM, MOV, AVI, MKV, M4V and 3GP."
+                        "Allowed formats: MP4, WEBM, MOV, AVI, "
+                        "MKV, M4V and 3GP."
                     )
                 })
 
-            # Maximum original video upload size: 100 MB
             if file.size > 100 * 1024 * 1024:
                 raise serializers.ValidationError({
                     "file": "Video size cannot exceed 100 MB."
@@ -490,30 +553,31 @@ class SpotMediaSerializer(serializers.ModelSerializer):
         file = validated_data["file"]
         media_type = validated_data["media_type"]
 
-        # -------------------------
+        # =========================
         # IMAGE COMPRESSION
-        # -------------------------
+        # =========================
+
         if media_type == SpotMedia.MediaType.IMAGE:
-
             optimized_file = compress_image(file)
-
             validated_data["file"] = optimized_file
 
-        # -------------------------
+        # =========================
         # VIDEO COMPRESSION
-        # -------------------------
+        # =========================
+
         elif media_type == SpotMedia.MediaType.VIDEO:
-
             optimized_file = compress_video(file)
-
             validated_data["file"] = optimized_file
 
         return super().create(validated_data)
 
 
-
+# =========================
+# AUDIT LOG SERIALIZER
+# =========================
 
 class AuditLogSerializer(serializers.ModelSerializer):
+
     user_name = serializers.CharField(
         source="user.name",
         read_only=True,
