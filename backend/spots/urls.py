@@ -23,7 +23,9 @@ from .views import (
     AdminSpotListView,
     AdminSpotDeleteView,
     AdminSpotStatusView,
-    AuditLogListView
+    AuditLogListView,
+    EmployeeSpotDetailView,
+    EmployeeDashboardStatsView
 )
 
 
@@ -190,6 +192,24 @@ urlpatterns = [
     "admin/audit-logs/",
     AuditLogListView.as_view(),
     name="admin-audit-logs",
+    ),
+
+
+    # Employee spot review - individual spot details
+    path(
+    "employee/spots/<int:pk>/",
+    EmployeeSpotDetailView.as_view(),
+    name="employee-spot-detail",
+    ),
+
+
+    # ============================================================
+    # EMPLOYEE DASHBOARD - STATISTICS
+    # ============================================================
+    path(
+    "employee/dashboard/",
+    EmployeeDashboardStatsView.as_view(),
+    name="employee-dashboard-stats",
     ),
 ]
 

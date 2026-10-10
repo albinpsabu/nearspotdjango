@@ -74,21 +74,47 @@ class HiddenSpotCreateView(generics.CreateAPIView):
     permission_classes = [IsUser]
 
 
+# ============================================================
+# EMPLOYEE SPOT REVIEW - LIST SUBMISSIONS
+# ============================================================
+
 class PendingSpotListView(generics.ListAPIView):
 
     serializer_class = PendingSpotSerializer
     permission_classes = [IsAdminOrEmployee]
 
     def get_queryset(self):
-        return HiddenSpot.objects.filter(
-            status=HiddenSpot.Status.PENDING
-        ).select_related(
-            "category",
-            "submitted_by"
-        ).order_by(
-            "-created_at"
+        return (
+            HiddenSpot.objects
+            .filter(status=HiddenSpot.Status.PENDING)
+            .select_related(
+                "category",
+                "submitted_by"
+            )
+            .prefetch_related("media")
+            .order_by("-created_at")
         )
 
+
+# ============================================================
+# EMPLOYEE SPOT REVIEW - INSPECT ONE SUBMISSION
+# ============================================================
+
+class EmployeeSpotDetailView(generics.RetrieveAPIView):
+
+    serializer_class = PendingSpotSerializer
+    permission_classes = [IsAdminOrEmployee]
+    lookup_field = "pk"
+
+    def get_queryset(self):
+        return (
+            HiddenSpot.objects
+            .select_related(
+                "category",
+                "submitted_by"
+            )
+            .prefetch_related("media")
+        )
 
 class ApproveSpotView(APIView):
 
@@ -653,3 +679,122 @@ class AuditLogListView(generics.ListAPIView):
     )
     serializer_class = AuditLogSerializer
     permission_classes = [IsAdmin]
+
+
+
+
+# ============================================================
+# EMPLOYEE DASHBOARD - DATABASE-BACKED STATISTICS
+# ============================================================
+
+class EmployeeDashboardStatsView(APIView):
+
+    permission_classes = [IsAdminOrEmployee]
+
+    def get(self, request):
+
+        # --------------------------------------------
+        # SPOT STATISTICS
+        # --------------------------------------------
+
+        spot_stats = HiddenSpot.objects.aggregate(
+            total=Count("id"),
+            pending=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.PENDING)
+            ),
+            approved=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.APPROVED)
+            ),
+            rejected=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.REJECTED)
+            ),
+            cancelled=Count(
+                "id",
+                filter=Q(status=HiddenSpot.Status.CANCELLED)
+            ),
+        )
+
+        # --------------------------------------------
+        # REPORT STATISTICS
+        # --------------------------------------------
+
+        report_stats = Report.objects.aggregate(
+            total=Count("id"),
+            pending=Count(
+                "id",
+                filter=Q(status=Report.Status.PENDING)
+            ),
+            reviewed=Count(
+                "id",
+                filter=Q(status=Report.Status.REVIEWED)
+            ),
+            resolved=Count(
+                "id",
+                filter=Q(status=Report.Status.RESOLVED)
+            ),
+        )
+
+        # --------------------------------------------
+        # CURRENT EMPLOYEE'S REVIEW ACTIVITY
+        # --------------------------------------------
+
+        review_stats = Verification.objects.filter(
+            employee=request.user
+        ).aggregate(
+            total_reviews=Count("id"),
+            approved=Count(
+                "id",
+                filter=Q(
+                    action=Verification.Action.APPROVED
+                )
+            ),
+            rejected=Count(
+                "id",
+                filter=Q(
+                    action=Verification.Action.REJECTED
+                )
+            ),
+        )
+
+        # --------------------------------------------
+        # RECENT REVIEWS BY CURRENT EMPLOYEE
+        # --------------------------------------------
+
+        recent_reviews = (
+            Verification.objects
+            .filter(employee=request.user)
+            .select_related("spot")
+            .order_by("-created_at")[:5]
+        )
+
+        recent_activity = [
+            {
+                "verification_id": review.id,
+                "spot_id": review.spot_id,
+                "spot_name": review.spot.name,
+                "action": review.action,
+                "reason": review.reason,
+                "created_at": review.created_at,
+            }
+            for review in recent_reviews
+        ]
+
+        # --------------------------------------------
+        # API RESPONSE
+        # --------------------------------------------
+
+        return Response({
+            "employee": {
+                "id": request.user.id,
+                "name": request.user.name,
+                "email": request.user.email,
+                "role": request.user.role,
+            },
+            "spots": spot_stats,
+            "reports": report_stats,
+            "my_reviews": review_stats,
+            "recent_activity": recent_activity,
+        })

@@ -131,49 +131,84 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
 # PENDING SPOT SERIALIZER
 # =========================
 
+# ============================================================
+# EMPLOYEE SPOT REVIEW SERIALIZER
+# Returns full submission details, including uploaded media.
+# ============================================================
+
 class PendingSpotSerializer(serializers.ModelSerializer):
 
     category_name = serializers.CharField(
         source="category.name",
-        read_only=True,
+        read_only=True
+    )
+
+    category_description = serializers.CharField(
+        source="category.description",
+        read_only=True
     )
 
     submitted_by_name = serializers.CharField(
         source="submitted_by.name",
-        read_only=True,
+        read_only=True
     )
 
     submitted_by_email = serializers.CharField(
         source="submitted_by.email",
-        read_only=True,
+        read_only=True
     )
 
     latitude = serializers.SerializerMethodField()
     longitude = serializers.SerializerMethodField()
+    media = serializers.SerializerMethodField()
 
     class Meta:
         model = HiddenSpot
+
         fields = [
             "id",
             "name",
             "description",
             "category",
             "category_name",
+            "category_description",
             "latitude",
             "longitude",
             "submitted_by_name",
             "submitted_by_email",
             "status",
+            "rejection_reason",
             "created_at",
+            "updated_at",
+            "media",
         ]
 
+        read_only_fields = fields
+
     def get_latitude(self, obj):
-        return obj.location.y
+        return obj.location.y if obj.location else None
 
     def get_longitude(self, obj):
-        return obj.location.x
+        return obj.location.x if obj.location else None
 
+    def get_media(self, obj):
+        request = self.context.get("request")
+        media_list = []
 
+        for media in obj.media.all():
+            file_url = media.file.url
+
+            if request:
+                file_url = request.build_absolute_uri(file_url)
+
+            media_list.append({
+                "id": media.id,
+                "media_type": media.media_type,
+                "url": file_url,
+                "uploaded_at": media.uploaded_at,
+            })
+
+        return media_list
 # =========================
 # VERIFICATION SERIALIZER
 # =========================
@@ -307,45 +342,113 @@ class MySpotSerializer(serializers.ModelSerializer):
         return obj.location.x
 
 
-# =========================
+# ============================================================
 # REPORT SERIALIZER
-# =========================
+# Provides complete report information for Admin and Employee.
+# Also remains compatible with the User report-creation API.
+# ============================================================
 
 class ReportSerializer(serializers.ModelSerializer):
 
-    spot_name = serializers.CharField(
-        source="spot.name",
-        read_only=True,
-    )
+    # --------------------------------------------
+    # REPORTER INFORMATION
+    # --------------------------------------------
 
     reported_by_name = serializers.CharField(
         source="reported_by.name",
-        read_only=True,
+        read_only=True
     )
 
     reported_by_email = serializers.EmailField(
         source="reported_by.email",
-        read_only=True,
+        read_only=True
     )
+
+    # --------------------------------------------
+    # REPORTED SPOT INFORMATION
+    # --------------------------------------------
+
+    spot_name = serializers.CharField(
+        source="spot.name",
+        read_only=True
+    )
+
+    spot_category = serializers.CharField(
+        source="spot.category.name",
+        read_only=True
+    )
+
+    spot_status = serializers.CharField(
+        source="spot.status",
+        read_only=True
+    )
+
+    spot_description = serializers.CharField(
+        source="spot.description",
+        read_only=True
+    )
+
+    spot_latitude = serializers.SerializerMethodField()
+    spot_longitude = serializers.SerializerMethodField()
+
+    # --------------------------------------------
+    # SERIALIZER CONFIGURATION
+    # --------------------------------------------
 
     class Meta:
         model = Report
+
         fields = [
             "id",
-            "spot",
-            "spot_name",
-            "reported_by",
-            "reported_by_name",
-            "reported_by_email",
+
+            # Report information
             "reason",
             "status",
             "created_at",
+            "updated_at",
+
+            # Reported spot
+            "spot",
+            "spot_name",
+            "spot_category",
+            "spot_status",
+            "spot_description",
+            "spot_latitude",
+            "spot_longitude",
+
+            # Reporter
+            "reported_by",
+            "reported_by_name",
+            "reported_by_email",
         ]
+
         read_only_fields = [
             "id",
             "status",
             "created_at",
+            "updated_at",
+            "reported_by",
         ]
+
+    # --------------------------------------------
+    # LOCATION COORDINATES
+    # --------------------------------------------
+
+    def get_spot_latitude(self, obj):
+        if not obj.spot.location:
+            return None
+
+        return obj.spot.location.y
+
+    def get_spot_longitude(self, obj):
+        if not obj.spot.location:
+            return None
+
+        return obj.spot.location.x
+
+    # --------------------------------------------
+    # VALIDATION
+    # --------------------------------------------
 
     def validate_spot(self, spot):
         if spot.status != HiddenSpot.Status.APPROVED:
@@ -354,7 +457,6 @@ class ReportSerializer(serializers.ModelSerializer):
             )
 
         return spot
-
 
 # =========================
 # REPORT STATUS SERIALIZER

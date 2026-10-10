@@ -14,7 +14,8 @@ from .views import (
     PasswordResetRequestView,
     PasswordResetConfirmView,
     AdminDashboardStatsView,
-    AdminEmployeeStatusView
+    AdminEmployeeStatusView,
+    AdminEmployeeListView
 )
 
 
@@ -92,4 +93,12 @@ urlpatterns = [
     AdminEmployeeStatusView.as_view(),
     name="admin-employee-status",
     ),
+
+
+    path("employees/list/", 
+    AdminEmployeeListView.as_view(), 
+    name="admin-employee-list"
+    ),
+
+
 ]

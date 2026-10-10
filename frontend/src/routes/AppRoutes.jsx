@@ -15,6 +15,11 @@ import AdminEmployees from "../pages/admin/AdminEmployees";
 import AdminCategories from "../pages/admin/AdminCategories";
 import AdminReports from "../pages/admin/AdminReports";
 
+
+import EmployeeDashboard  from "../pages/employee/Dashboard"
+import PendingSpots from "../pages/employee/PendingSpots";
+import Reports from "../pages/employee/Reports";
+import Profile from "../pages/employee/Profile";
 // ============================================================
 // APPLICATION ROUTES
 // ============================================================
@@ -103,6 +108,25 @@ function AppRoutes() {
         <Route
           path="/admin/reports"
           element={<AdminReports />}
+        />
+
+        {/* EMPLOYEE DASHBOARD */}
+        <Route
+          path="/employee"
+          element={<EmployeeDashboard />}
+        />
+
+        <Route path="/employee/spots" 
+        element={<PendingSpots />} 
+        />
+
+
+        <Route path="/employee/reports" 
+        element={<Reports />} 
+        />
+
+        <Route path="/employee/profile" 
+        element={<Profile />} 
         />
 
       </Routes>
