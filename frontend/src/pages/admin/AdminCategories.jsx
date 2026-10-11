@@ -1,55 +1,13 @@
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
 import AdminStatCard from "../../components/admin/AdminStatCard";
+import api from "../../services/api";
 
 // ============================================================
-// API CONFIGURATION
+// HELPERS
 // ============================================================
-const CATEGORIES_API = "http://127.0.0.1:8000/api/spots/categories/";
-const SPOTS_API = "http://127.0.0.1:8000/api/spots/admin/spots/";
 
-// ============================================================
-// AUTHENTICATION HELPERS
-// ============================================================
-function getAccessToken() {
-  const keys = ["access", "accessToken", "access_token", "token", "jwt"];
-
-  for (const key of keys) {
-    const value = localStorage.getItem(key);
-    if (!value) continue;
-
-    try {
-      const parsed = JSON.parse(value);
-
-      if (typeof parsed === "string") return parsed;
-      if (parsed?.access) return parsed.access;
-      if (parsed?.accessToken) return parsed.accessToken;
-      if (parsed?.access_token) return parsed.access_token;
-    } catch {
-      return value;
-    }
-  }
-
-  try {
-    const user = JSON.parse(localStorage.getItem("user") || "null");
-    return user?.access || user?.accessToken || user?.access_token || null;
-  } catch {
-    return null;
-  }
-}
-
-function getAuthHeaders() {
-  const token = getAccessToken();
-
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
-// ============================================================
-// RESPONSE HELPERS
-// ============================================================
 function normalizeList(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.results)) return data.results;
@@ -63,13 +21,19 @@ function getCategoryId(spot) {
   if (spot?.category && typeof spot.category === "object") {
     return spot.category.id;
   }
-
   return spot?.category;
 }
 
-async function getErrorMessage(response, fallback) {
-  const data = await response.json().catch(() => ({}));
+function getApiError(error, fallback) {
+  if (error.response?.status === 401) {
+    return "Authentication failed. Please log in again.";
+  }
 
+  if (error.response?.status === 403) {
+    return "Access denied. Administrator permission is required.";
+  }
+
+  const data = error.response?.data;
   const detail =
     data?.detail ||
     data?.error ||
@@ -81,33 +45,29 @@ async function getErrorMessage(response, fallback) {
   if (typeof detail === "string") return detail;
   if (detail) return JSON.stringify(detail);
 
-  return `${fallback} (${response.status}).`;
+  return error.message || fallback;
 }
 
 // ============================================================
 // ADMIN CATEGORIES
 // ============================================================
+
 function AdminCategories() {
-  // ===== DATA =====
   const [categories, setCategories] = useState([]);
   const [spots, setSpots] = useState([]);
 
-  // ===== SEARCH AND FILTERS =====
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
 
-  // ===== LOADING =====
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // ===== MESSAGES =====
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [formError, setFormError] = useState("");
 
-  // ===== ADD / EDIT POPUP =====
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
 
@@ -117,14 +77,14 @@ function AdminCategories() {
     is_active: true,
   });
 
-  // ===== OTHER MODALS =====
   const [viewingCategory, setViewingCategory] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
 
   // ============================================================
   // FETCH CATEGORIES AND SPOTS
   // ============================================================
-  const fetchData = useCallback(async (isRefresh = false) => {
+
+  const fetchData = useCallback(async (isRefresh = false, signal) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -134,59 +94,58 @@ function AdminCategories() {
     setError("");
 
     try {
-      const [categoryResponse, spotResponse] = await Promise.all([
-        fetch(CATEGORIES_API, {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }),
-        fetch(SPOTS_API, {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }),
-      ]);
+      const categoryResponse = await api.get("/spots/categories/", {
+        signal,
+      });
 
-      if (!categoryResponse.ok) {
-        if ([401, 403].includes(categoryResponse.status)) {
-          throw new Error(
-            "You are not authorized to manage categories. Please sign in again."
-          );
+      if (signal?.aborted) return;
+
+      setCategories(normalizeList(categoryResponse.data));
+
+      // A spots request failure should not prevent categories loading.
+      try {
+        const spotResponse = await api.get("/spots/admin/spots/", {
+          signal,
+        });
+
+        if (!signal?.aborted) {
+          setSpots(normalizeList(spotResponse.data));
         }
+      } catch (spotError) {
+        if (signal?.aborted) return;
 
-        throw new Error(
-          await getErrorMessage(
-            categoryResponse,
-            "Unable to load categories"
-          )
+        console.error("Failed to load spots:", spotError);
+        setSpots([]);
+        setError(
+          "Categories loaded, but spots could not be loaded. " +
+          getApiError(spotError, "Please try refreshing.")
         );
       }
-
-      const categoryData = await categoryResponse.json();
-      setCategories(normalizeList(categoryData));
-
-      if (spotResponse.ok) {
-        const spotData = await spotResponse.json();
-        setSpots(normalizeList(spotData));
-      } else {
-        setSpots([]);
-      }
     } catch (err) {
-      setError(
-        err.message ||
-          "Unable to load categories. Check your backend connection."
-      );
+      if (signal?.aborted || err.code === "ERR_CANCELED") return;
+
+      console.error("Failed to load categories:", err);
+      setError(getApiError(err, "Unable to load categories."));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    fetchData();
+    const controller = new AbortController();
+
+    fetchData(false, controller.signal);
+
+    return () => controller.abort();
   }, [fetchData]);
 
   // ============================================================
-  // CATEGORY STATISTICS
+  // STATISTICS
   // ============================================================
+
   const statistics = useMemo(
     () => ({
       total: categories.length,
@@ -204,6 +163,7 @@ function AdminCategories() {
   // ============================================================
   // SEARCH AND FILTER
   // ============================================================
+
   const filteredCategories = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -225,6 +185,7 @@ function AdminCategories() {
   // ============================================================
   // SPOT HELPERS
   // ============================================================
+
   const getSpotsForCategory = (categoryId) =>
     spots.filter(
       (spot) => String(getCategoryId(spot)) === String(categoryId)
@@ -234,31 +195,26 @@ function AdminCategories() {
     getSpotsForCategory(categoryId).length;
 
   // ============================================================
-  // OPEN ADD CATEGORY POPUP
+  // ADD / EDIT MODAL
   // ============================================================
+
   const openAddModal = () => {
     setEditingCategory(null);
-
     setFormData({
       name: "",
       description: "",
       is_active: true,
     });
-
     setFormError("");
     setError("");
     setSuccess("");
     setShowCategoryModal(true);
   };
 
-  // ============================================================
-  // OPEN EDIT CATEGORY POPUP
-  // ============================================================
   const startEdit = (category) => {
     if (!category) return;
 
     setEditingCategory(category);
-
     setFormData({
       name: category.name || "",
       description: category.description || "",
@@ -271,16 +227,12 @@ function AdminCategories() {
     setShowCategoryModal(true);
   };
 
-  // ============================================================
-  // CLOSE ADD / EDIT POPUP
-  // ============================================================
   const closeCategoryModal = () => {
     if (saving) return;
 
     setShowCategoryModal(false);
     setEditingCategory(null);
     setFormError("");
-
     setFormData({
       name: "",
       description: "",
@@ -289,11 +241,11 @@ function AdminCategories() {
   };
 
   // ============================================================
-  // CREATE OR UPDATE CATEGORY
+  // CREATE / UPDATE CATEGORY
   // ============================================================
+
   const handleSaveCategory = async (event) => {
     event.preventDefault();
-
     if (saving) return;
 
     setFormError("");
@@ -324,45 +276,34 @@ function AdminCategories() {
     try {
       const isEditing = Boolean(editingCategory);
 
-      const url = isEditing
-        ? `${CATEGORIES_API}${editingCategory.id}/`
-        : CATEGORIES_API;
+      const payload = {
+        name,
+        description,
+        is_active: formData.is_active,
+      };
 
-      const response = await fetch(url, {
-        method: isEditing ? "PATCH" : "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name,
-          description,
-          is_active: formData.is_active,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          await getErrorMessage(
-            response,
-            isEditing
-              ? "Unable to update category"
-              : "Unable to create category"
+      const response = isEditing
+        ? await api.patch(
+            `/spots/categories/${editingCategory.id}/`,
+            payload
           )
-        );
-      }
+        : await api.post("/spots/categories/", payload);
 
-      const savedCategory = await response.json().catch(() => null);
-
-      setSuccess(
-        isEditing
-          ? `Category "${savedCategory?.name || name}" updated successfully.`
-          : `Category "${savedCategory?.name || name}" created successfully.`
-      );
+      const savedCategory = response.data || {};
 
       setShowCategoryModal(false);
       setEditingCategory(null);
 
       await fetchData(true);
+
+      setSuccess(
+        isEditing
+          ? `Category "${savedCategory.name || name}" updated successfully.`
+          : `Category "${savedCategory.name || name}" created successfully.`
+      );
     } catch (err) {
-      setFormError(err.message || "Unable to save category.");
+      console.error("Failed to save category:", err);
+      setFormError(getApiError(err, "Unable to save category."));
     } finally {
       setSaving(false);
     }
@@ -371,6 +312,7 @@ function AdminCategories() {
   // ============================================================
   // ACTIVATE / DEACTIVATE CATEGORY
   // ============================================================
+
   const handleToggleStatus = async (category) => {
     if (!category || actionLoading) return;
 
@@ -379,51 +321,24 @@ function AdminCategories() {
     setSuccess("");
 
     try {
-      const response = await fetch(
-        `${CATEGORIES_API}${category.id}/`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            is_active: !category.is_active,
-          }),
-        }
-      );
+      await api.patch(`/spots/categories/${category.id}/`, {
+        is_active: !category.is_active,
+      });
 
-      if (!response.ok) {
-        throw new Error(
-          await getErrorMessage(
-            response,
-            "Unable to update category status"
-          )
-        );
-      }
+      setConfirmAction(null);
 
-      const updatedCategory = await response.json().catch(() => null);
-
-      setCategories((previous) =>
-        previous.map((item) =>
-          String(item.id) === String(category.id)
-            ? {
-                ...item,
-                ...(updatedCategory || {}),
-                is_active:
-                  updatedCategory?.is_active ?? !category.is_active,
-              }
-            : item
-        )
-      );
+      await fetchData(true);
 
       setSuccess(
         `Category "${category.name}" ${
           !category.is_active ? "activated" : "deactivated"
         } successfully.`
       );
-
-      setConfirmAction(null);
-      await fetchData(true);
     } catch (err) {
-      setError(err.message || "Unable to update category status.");
+      console.error("Failed to update category status:", err);
+      setError(
+        getApiError(err, "Unable to update category status.")
+      );
       setConfirmAction(null);
     } finally {
       setActionLoading(false);
@@ -433,6 +348,7 @@ function AdminCategories() {
   // ============================================================
   // DELETE CATEGORY
   // ============================================================
+
   const handleDeleteCategory = async (category) => {
     if (!category || actionLoading) return;
 
@@ -441,32 +357,18 @@ function AdminCategories() {
     setSuccess("");
 
     try {
-      const response = await fetch(
-        `${CATEGORIES_API}${category.id}/`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          await getErrorMessage(response, "Unable to delete category")
-        );
-      }
-
-      setCategories((previous) =>
-        previous.filter(
-          (item) => String(item.id) !== String(category.id)
-        )
-      );
+      await api.delete(`/spots/categories/${category.id}/`);
 
       setConfirmAction(null);
-      setSuccess(`Category "${category.name}" deleted successfully.`);
 
       await fetchData(true);
+
+      setSuccess(
+        `Category "${category.name}" deleted successfully.`
+      );
     } catch (err) {
-      setError(err.message || "Unable to delete category.");
+      console.error("Failed to delete category:", err);
+      setError(getApiError(err, "Unable to delete category."));
       setConfirmAction(null);
     } finally {
       setActionLoading(false);
@@ -476,9 +378,10 @@ function AdminCategories() {
   // ============================================================
   // PAGE UI
   // ============================================================
+
   return (
     <AdminLayout>
-      {/* ===== PAGE HEADER ===== */}
+      {/* PAGE HEADER */}
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1
@@ -523,7 +426,7 @@ function AdminCategories() {
         </div>
       </div>
 
-      {/* ===== ALERTS ===== */}
+      {/* ALERTS */}
       {error && (
         <div className="alert alert-danger rounded-3" role="alert">
           <div className="d-flex justify-content-between gap-2">
@@ -552,7 +455,7 @@ function AdminCategories() {
         </div>
       )}
 
-      {/* ===== CATEGORY STATISTICS ===== */}
+      {/* CATEGORY STATISTICS */}
       <div className="row g-3 mb-4">
         <AdminStatCard
           title="TOTAL CATEGORIES"
@@ -583,7 +486,7 @@ function AdminCategories() {
         />
       </div>
 
-      {/* ===== SEARCH AND FILTERS ===== */}
+      {/* SEARCH AND FILTERS */}
       <div className="card border-0 shadow-sm rounded-4 mb-3">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
@@ -614,7 +517,7 @@ function AdminCategories() {
         </div>
       </div>
 
-      {/* ===== CATEGORIES TABLE ===== */}
+      {/* CATEGORIES TABLE */}
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
@@ -676,7 +579,7 @@ function AdminCategories() {
                       colSpan="5"
                       className="text-center py-5 text-muted"
                     >
-                      {error
+                      {error && categories.length === 0
                         ? "Categories could not be loaded."
                         : categories.length === 0
                           ? "No categories found. Add your first category."
@@ -695,7 +598,12 @@ function AdminCategories() {
                         </small>
                       </td>
 
-                      <td style={{ minWidth: "180px", maxWidth: "350px" }}>
+                      <td
+                        style={{
+                          minWidth: "180px",
+                          maxWidth: "350px",
+                        }}
+                      >
                         {category.description || "No description"}
                       </td>
 
@@ -724,7 +632,9 @@ function AdminCategories() {
                           <button
                             type="button"
                             className="btn btn-sm btn-light border"
-                            onClick={() => setViewingCategory(category)}
+                            onClick={() =>
+                              setViewingCategory(category)
+                            }
                           >
                             View Spots
                           </button>
@@ -752,7 +662,9 @@ function AdminCategories() {
                               })
                             }
                           >
-                            {category.is_active ? "Deactivate" : "Activate"}
+                            {category.is_active
+                              ? "Deactivate"
+                              : "Activate"}
                           </button>
 
                           <button
@@ -785,9 +697,7 @@ function AdminCategories() {
         </div>
       </div>
 
-      {/* ============================================================
-          ADD / EDIT CATEGORY POPUP
-      ============================================================ */}
+      {/* ADD / EDIT CATEGORY MODAL */}
       {showCategoryModal && (
         <div
           className="modal d-block"
@@ -812,7 +722,9 @@ function AdminCategories() {
                     className="modal-title fw-bold"
                     style={{ color: "#1d2b2e" }}
                   >
-                    {editingCategory ? "Edit Category" : "Add New Category"}
+                    {editingCategory
+                      ? "Edit Category"
+                      : "Add New Category"}
                   </h5>
 
                   <p className="mb-0 mt-1 text-muted small">
@@ -833,7 +745,10 @@ function AdminCategories() {
 
               <div className="modal-body p-4">
                 {formError && (
-                  <div className="alert alert-danger py-2" role="alert">
+                  <div
+                    className="alert alert-danger py-2"
+                    role="alert"
+                  >
                     {formError}
                   </div>
                 )}
@@ -945,9 +860,7 @@ function AdminCategories() {
         </div>
       )}
 
-      {/* ============================================================
-          VIEW SPOTS POPUP
-      ============================================================ */}
+      {/* VIEW SPOTS MODAL */}
       {viewingCategory && (
         <div
           className="modal d-block"
@@ -966,6 +879,7 @@ function AdminCategories() {
                   <h5 className="modal-title fw-bold">
                     {viewingCategory.name}
                   </h5>
+
                   <p className="mb-0 mt-1 text-muted small">
                     {getSpotCount(viewingCategory.id)} assigned spot(s)
                   </p>
@@ -996,28 +910,30 @@ function AdminCategories() {
                       </thead>
 
                       <tbody>
-                        {getSpotsForCategory(viewingCategory.id).map((spot) => (
-                          <tr key={spot.id}>
-                            <td>
-                              <div className="fw-semibold">
-                                {spot.name || `Spot #${spot.id}`}
-                              </div>
-                              <small className="text-muted">
-                                ID: {spot.id}
-                              </small>
-                            </td>
+                        {getSpotsForCategory(viewingCategory.id).map(
+                          (spot) => (
+                            <tr key={spot.id}>
+                              <td>
+                                <div className="fw-semibold">
+                                  {spot.name || `Spot #${spot.id}`}
+                                </div>
+                                <small className="text-muted">
+                                  ID: {spot.id}
+                                </small>
+                              </td>
 
-                            <td>
-                              <span className="badge bg-light text-dark border">
-                                {spot.status || "Unknown"}
-                              </span>
-                            </td>
+                              <td>
+                                <span className="badge bg-light text-dark border">
+                                  {spot.status || "Unknown"}
+                                </span>
+                              </td>
 
-                            <td>
-                              {spot.description || "No description"}
-                            </td>
-                          </tr>
-                        ))}
+                              <td>
+                                {spot.description || "No description"}
+                              </td>
+                            </tr>
+                          )
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1038,9 +954,7 @@ function AdminCategories() {
         </div>
       )}
 
-      {/* ============================================================
-          DELETE / ACTIVATE / DEACTIVATE CONFIRMATION POPUP
-      ============================================================ */}
+      {/* CONFIRMATION MODAL */}
       {confirmAction && (
         <div
           className="modal d-block"

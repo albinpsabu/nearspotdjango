@@ -12,6 +12,9 @@ from .models import (
     CommunityVerification,
     SpotMedia,
     AuditLog,
+    Review,
+    SavedSpot,
+    ReviewMedia
 )
 
 
@@ -701,3 +704,232 @@ class AuditLogSerializer(serializers.ModelSerializer):
             "user_name",
             "created_at",
         ]
+
+
+
+
+
+
+
+class ReviewMediaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReviewMedia
+        fields = ["id", "file", "media_type", "uploaded_at"]
+        read_only_fields = ["id", "uploaded_at"]
+    def validate(self, attrs):
+        file = attrs.get("file")
+        media_type = attrs.get("media_type")
+        if not file:
+            raise serializers.ValidationError({"file": "A file is required."})
+        if media_type == ReviewMedia.MediaType.IMAGE:
+            allowed = ["image/jpeg", "image/png", "image/webp"]
+            if file.content_type not in allowed:
+                raise serializers.ValidationError({"file": "Only JPG, PNG, WEBP allowed."})
+            if file.size > 10 * 1024 * 1024:
+                raise serializers.ValidationError({"file": "Image max 10MB."})
+        elif media_type == ReviewMedia.MediaType.VIDEO:
+            allowed = ["video/mp4", "video/webm", "video/quicktime"]
+            if file.content_type not in allowed:
+                raise serializers.ValidationError({"file": "Only MP4, WEBM, MOV allowed."})
+            if file.size > 100 * 1024 * 1024:
+                raise serializers.ValidationError({"file": "Video max 100MB."})
+        else:
+            raise serializers.ValidationError({"media_type": "Must be IMAGE or VIDEO."})
+        return attrs
+
+# =========================
+# REVIEW SERIALIZER
+# =========================
+
+class ReviewSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source="user.name", read_only=True)
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    spot_name = serializers.CharField(source="spot.name", read_only=True)
+    media = ReviewMediaSerializer(many=True, read_only=True)
+    # Write-only fields for media upload
+    media_files = serializers.ListField(
+        child=serializers.FileField(), write_only=True, required=False
+    )
+    media_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=ReviewMedia.MediaType.choices),
+        write_only=True, required=False
+    )
+    class Meta:
+        model = Review
+        fields = [
+            "id", "spot", "spot_name", "user", "user_name", "user_email",
+            "rating", "comment", "created_at", "updated_at",
+            "media", "media_files", "media_types",
+        ]
+        read_only_fields = [
+            "id", "spot", "user", "user_name", "user_email", "spot_name",
+            "created_at", "updated_at", "media",
+        ]
+    def validate_rating(self, value):
+        if not 1 <= value <= 5:
+            raise serializers.ValidationError("Rating must be between 1 and 5.")
+        return value
+    def validate(self, attrs):
+        media_files = attrs.get("media_files", [])
+        media_types = attrs.get("media_types", [])
+        if media_files and len(media_files) != len(media_types):
+            raise serializers.ValidationError("media_files and media_types must have same length.")
+        return attrs
+    def create(self, validated_data):
+        media_files = validated_data.pop("media_files", [])
+        media_types = validated_data.pop("media_types", [])
+        validated_data["user"] = self.context["request"].user
+        review = super().create(validated_data)
+        for f, t in zip(media_files, media_types):
+            ReviewMedia.objects.create(review=review, file=f, media_type=t)
+        return review
+    def update(self, instance, validated_data):
+        media_files = validated_data.pop("media_files", None)
+        media_types = validated_data.pop("media_types", None)
+        
+        review = super().update(instance, validated_data)
+        
+        # If media provided, replace all (simple strategy)
+        if media_files is not None:
+            review.media.all().delete()
+            for f, t in zip(media_files, media_types or ["IMAGE"] * len(media_files)):
+                ReviewMedia.objects.create(review=review, file=f, media_type=t)
+        
+        return review
+# =========================
+# SAVED SPOT SERIALIZER
+# =========================
+
+class SavedSpotSerializer(serializers.ModelSerializer):
+    spot_name = serializers.CharField(source="spot.name", read_only=True)
+    spot_category = serializers.CharField(source="spot.category.name", read_only=True)
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
+    media = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SavedSpot
+        fields = [
+            "id",
+            "spot",
+            "spot_name",
+            "spot_category",
+            "latitude",
+            "longitude",
+            "media",
+            "saved_at",
+        ]
+        read_only_fields = [
+            "id",
+            "user",
+            "spot_name",
+            "spot_category",
+            "latitude",
+            "longitude",
+            "media",
+            "saved_at",
+        ]
+
+    def get_latitude(self, obj):
+        return obj.spot.location.y if obj.spot.location else None
+
+    def get_longitude(self, obj):
+        return obj.spot.location.x if obj.spot.location else None
+
+    def get_media(self, obj):
+        request = self.context.get("request")
+        media_list = []
+        for media in obj.spot.media.all():
+            file_url = media.file.url
+            if request:
+                file_url = request.build_absolute_uri(file_url)
+            media_list.append({
+                "id": media.id,
+                "media_type": media.media_type,
+                "url": file_url,
+                "uploaded_at": media.uploaded_at,
+            })
+        return media_list
+
+    def validate_spot(self, spot):
+        if spot.status != HiddenSpot.Status.APPROVED:
+            raise serializers.ValidationError("Can only save approved spots.")
+        return spot
+
+    def create(self, validated_data):
+        validated_data["user"] = self.context["request"].user
+        return super().create(validated_data)
+
+
+
+
+
+
+
+# =========================
+# SAVED SPOT LIST SERIALIZER
+# =========================
+
+class SavedSpotListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing saved spots."""
+    spot_name = serializers.CharField(source="spot.name", read_only=True)
+    spot_category = serializers.CharField(source="spot.category.name", read_only=True)
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SavedSpot
+        fields = [
+            "id",
+            "spot",
+            "spot_name",
+            "spot_category",
+            "latitude",
+            "longitude",
+            "saved_at",
+        ]
+        read_only_fields = fields
+
+    def get_latitude(self, obj):
+        return obj.spot.location.y if obj.spot.location else None
+
+    def get_longitude(self, obj):
+        return obj.spot.location.x if obj.spot.location else None
+
+
+
+
+
+
+class MyReviewSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for user's own reviews."""
+    spot_name = serializers.CharField(source="spot.name", read_only=True)
+    spot_category = serializers.CharField(source="spot.category.name", read_only=True)
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Review
+        fields = [
+            "id",
+            "spot",
+            "spot_name",
+            "spot_category",
+            "latitude",
+            "longitude",
+            "rating",
+            "comment",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_latitude(self, obj):
+        return obj.spot.location.y if obj.spot.location else None
+
+    def get_longitude(self, obj):
+        return obj.spot.location.x if obj.spot.location else None
+
+
+
+

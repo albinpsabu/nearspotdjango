@@ -1,88 +1,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
-
-// ============================================================
-// API CONFIGURATION
-// ============================================================
-
-const API_BASE_URL = "http://127.0.0.1:8000/api/accounts";
-
-// ============================================================
-// AUTHENTICATION
-// ============================================================
-
-function getAuthToken() {
-  const keys = ["access", "accessToken", "access_token", "token", "jwt"];
-
-  for (const key of keys) {
-    const value = localStorage.getItem(key);
-
-    if (value && value !== "undefined" && value !== "null") {
-      return value;
-    }
-  }
-
-  for (const key of ["user", "authUser", "currentUser"]) {
-    try {
-      const value = localStorage.getItem(key);
-      if (!value) continue;
-
-      const parsed = JSON.parse(value);
-      const token =
-        parsed?.access ||
-        parsed?.accessToken ||
-        parsed?.access_token ||
-        parsed?.token;
-
-      if (token) return token;
-    } catch {
-      // Ignore invalid JSON.
-    }
-  }
-
-  return null;
-}
-
-// ============================================================
-// API HELPERS
-// ============================================================
-
-async function apiRequest(url, options = {}) {
-  const token = getAuthToken();
-
-  if (!token) {
-    throw new Error("Authentication token not found. Please log in again.");
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const message =
-      data?.detail ||
-      data?.error ||
-      data?.message ||
-      Object.entries(data || {})
-        .map(([key, value]) =>
-          `${key}: ${Array.isArray(value) ? value.join(", ") : value}`
-        )
-        .join(" | ") ||
-      `Request failed (${response.status}).`;
-
-    throw new Error(message);
-  }
-
-  return data;
-}
+import api from "../../services/api";
 
 function getEmployeeList(data) {
   if (Array.isArray(data)) return data;
@@ -111,7 +30,6 @@ function formatJoinedDate(value) {
   if (!value) return "—";
 
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return "—";
 
   return date.toLocaleDateString("en-IN", {
@@ -122,12 +40,32 @@ function formatJoinedDate(value) {
 }
 
 function getErrorMessage(error) {
-  return error?.message || "Something went wrong. Please try again.";
-}
+  if (error.response?.status === 401) {
+    return "Authentication failed. Please log in again.";
+  }
 
-// ============================================================
-// ADMIN EMPLOYEES
-// ============================================================
+  if (error.response?.status === 403) {
+    return "Access denied. Administrator permission is required.";
+  }
+
+  const data = error.response?.data;
+
+  if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.message === "string") return data.message;
+  if (typeof data?.error === "string") return data.error;
+
+  if (data && typeof data === "object") {
+    const message = Object.entries(data)
+      .map(([key, value]) =>
+        `${key}: ${Array.isArray(value) ? value.join(", ") : value}`
+      )
+      .join(" | ");
+
+    if (message) return message;
+  }
+
+  return error.message || "Something went wrong. Please try again.";
+}
 
 function AdminEmployees() {
   const [employees, setEmployees] = useState([]);
@@ -151,32 +89,38 @@ function AdminEmployees() {
     confirmPassword: "",
   });
 
-  // ============================================================
-  // FETCH EMPLOYEES
-  // ============================================================
-
-  const fetchEmployees = useCallback(async (showLoader = true) => {
+  // Fetch employees using the shared authenticated Axios instance.
+  const fetchEmployees = useCallback(async (showLoader = true, signal) => {
     if (showLoader) setLoading(true);
-
     setError("");
 
     try {
-      const data = await apiRequest(`${API_BASE_URL}/employees/`);
-      setEmployees(getEmployeeList(data));
+      const response = await api.get("/accounts/employees/", {
+        signal,
+      });
+
+      if (!signal?.aborted) {
+        setEmployees(getEmployeeList(response.data));
+      }
     } catch (err) {
+      if (signal?.aborted || err.code === "ERR_CANCELED") return;
+
+      console.error("Failed to load employees:", err);
       setError(getErrorMessage(err));
     } finally {
-      if (showLoader) setLoading(false);
+      if (!signal?.aborted && showLoader) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
+    const controller = new AbortController();
 
-  // ============================================================
-  // STATISTICS
-  // ============================================================
+    fetchEmployees(true, controller.signal);
+
+    return () => controller.abort();
+  }, [fetchEmployees]);
 
   const statistics = useMemo(() => {
     const active = employees.filter(
@@ -194,10 +138,6 @@ function AdminEmployees() {
     };
   }, [employees]);
 
-  // ============================================================
-  // SEARCH AND FILTER
-  // ============================================================
-
   const filteredEmployees = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
 
@@ -213,16 +153,13 @@ function AdminEmployees() {
         role.includes(query);
 
       const status = getEmployeeStatus(employee);
+
       const matchesStatus =
         statusFilter === "ALL" || status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
   }, [employees, searchTerm, statusFilter]);
-
-  // ============================================================
-  // FORM HANDLERS
-  // ============================================================
 
   const handleFormChange = (event) => {
     const { name, value } = event.target;
@@ -244,17 +181,15 @@ function AdminEmployees() {
 
   const closeAddModal = () => {
     if (submitting) return;
-
     setShowAddModal(false);
     resetForm();
   };
 
-  // ============================================================
-  // CREATE EMPLOYEE
-  // ============================================================
-
+  // Create a new employee.
   const handleCreateEmployee = async (event) => {
     event.preventDefault();
+
+    if (submitting) return;
 
     setError("");
     setSuccess("");
@@ -282,30 +217,24 @@ function AdminEmployees() {
     setSubmitting(true);
 
     try {
-      await apiRequest(`${API_BASE_URL}/employees/`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          email: form.email.trim(),
-          password: form.password,
-        }),
+      await api.post("/accounts/employees/", {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
       });
 
       setShowAddModal(false);
       resetForm();
-      setSuccess("Employee created successfully.");
 
       await fetchEmployees(false);
+      setSuccess("Employee created successfully.");
     } catch (err) {
+      console.error("Failed to create employee:", err);
       setError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   };
-
-  // ============================================================
-  // OPEN STATUS CONFIRMATION
-  // ============================================================
 
   const openStatusModal = (employee) => {
     setError("");
@@ -318,12 +247,9 @@ function AdminEmployees() {
     setSelectedEmployee(null);
   };
 
-  // ============================================================
-  // ACTIVATE OR DEACTIVATE EMPLOYEE
-  // ============================================================
-
+  // Activate or deactivate an employee.
   const confirmStatusUpdate = async () => {
-    if (!selectedEmployee) return;
+    if (!selectedEmployee || updatingId !== null) return;
 
     const employee = selectedEmployee;
     const nextStatus = !employee.is_active;
@@ -333,14 +259,9 @@ function AdminEmployees() {
     setSuccess("");
 
     try {
-      await apiRequest(
-        `${API_BASE_URL}/employees/${employee.id}/status/`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            is_active: nextStatus,
-          }),
-        }
+      await api.patch(
+        `/accounts/employees/${employee.id}/status/`,
+        { is_active: nextStatus }
       );
 
       setEmployees((previous) =>
@@ -359,15 +280,12 @@ function AdminEmployees() {
         } successfully.`
       );
     } catch (err) {
+      console.error("Failed to update employee status:", err);
       setError(getErrorMessage(err));
     } finally {
       setUpdatingId(null);
     }
   };
-
-  // ============================================================
-  // STYLES
-  // ============================================================
 
   const headingStyle = {
     color: "#1d2b2e",
@@ -381,16 +299,9 @@ function AdminEmployees() {
     whiteSpace: "nowrap",
   };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
     <AdminLayout>
-      {/* ======================================================
-          PAGE HEADER
-      ======================================================= */}
-
+      {/* Page header */}
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1 className="fw-bold mb-1" style={headingStyle}>
@@ -437,17 +348,13 @@ function AdminEmployees() {
         </div>
       </div>
 
-      {/* ======================================================
-          ALERTS
-      ======================================================= */}
-
+      {/* Alerts */}
       {error && (
         <div
           className="alert alert-danger rounded-3 d-flex justify-content-between align-items-start gap-2"
           role="alert"
         >
           <span style={{ fontSize: "13px" }}>{error}</span>
-
           <button
             type="button"
             className="btn-close"
@@ -463,7 +370,6 @@ function AdminEmployees() {
           role="status"
         >
           <span style={{ fontSize: "13px" }}>{success}</span>
-
           <button
             type="button"
             className="btn-close"
@@ -473,10 +379,7 @@ function AdminEmployees() {
         </div>
       )}
 
-      {/* ======================================================
-          STATISTICS
-      ======================================================= */}
-
+      {/* Statistics */}
       <div className="row g-3 mb-4">
         {[
           {
@@ -526,10 +429,7 @@ function AdminEmployees() {
         ))}
       </div>
 
-      {/* ======================================================
-          SEARCH AND FILTERS
-      ======================================================= */}
-
+      {/* Search and filters */}
       <div className="card border-0 shadow-sm rounded-4 mb-3">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
@@ -545,7 +445,9 @@ function AdminEmployees() {
                   placeholder="Search employees by name or email..."
                   aria-label="Search employees"
                   value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onChange={(event) =>
+                    setSearchTerm(event.target.value)
+                  }
                 />
               </div>
             </div>
@@ -554,7 +456,9 @@ function AdminEmployees() {
               <select
                 className="form-select"
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value)
+                }
                 aria-label="Filter employees by status"
               >
                 <option value="ALL">All statuses</option>
@@ -566,10 +470,7 @@ function AdminEmployees() {
         </div>
       </div>
 
-      {/* ======================================================
-          EMPLOYEE TABLE
-      ======================================================= */}
-
+      {/* Employee table */}
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom d-flex flex-column flex-sm-row justify-content-between gap-2">
@@ -615,7 +516,10 @@ function AdminEmployees() {
                   <th className="py-3" style={labelStyle}>
                     JOINED
                   </th>
-                  <th className="py-3 pe-3 pe-md-4 text-end" style={labelStyle}>
+                  <th
+                    className="py-3 pe-3 pe-md-4 text-end"
+                    style={labelStyle}
+                  >
                     ACTION
                   </th>
                 </tr>
@@ -745,7 +649,10 @@ function AdminEmployees() {
                                 ? "btn-outline-danger"
                                 : "btn-outline-success"
                             }`}
-                            disabled={updating || status === "UNKNOWN"}
+                            disabled={
+                              updatingId !== null ||
+                              status === "UNKNOWN"
+                            }
                             onClick={() => openStatusModal(employee)}
                             style={{ fontSize: "11px" }}
                           >
@@ -776,10 +683,7 @@ function AdminEmployees() {
         </div>
       </div>
 
-      {/* ======================================================
-          ADD EMPLOYEE MODAL
-      ======================================================= */}
-
+      {/* Add employee modal */}
       {showAddModal && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
@@ -829,11 +733,16 @@ function AdminEmployees() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label" style={{ fontSize: "12px" }}>
+                  <label
+                    htmlFor="employee-name"
+                    className="form-label"
+                    style={{ fontSize: "12px" }}
+                  >
                     Full name
                   </label>
 
                   <input
+                    id="employee-name"
                     type="text"
                     name="name"
                     className="form-control rounded-3"
@@ -847,11 +756,16 @@ function AdminEmployees() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label" style={{ fontSize: "12px" }}>
+                  <label
+                    htmlFor="employee-email"
+                    className="form-label"
+                    style={{ fontSize: "12px" }}
+                  >
                     Email address
                   </label>
 
                   <input
+                    id="employee-email"
                     type="email"
                     name="email"
                     className="form-control rounded-3"
@@ -865,11 +779,16 @@ function AdminEmployees() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label" style={{ fontSize: "12px" }}>
+                  <label
+                    htmlFor="employee-password"
+                    className="form-label"
+                    style={{ fontSize: "12px" }}
+                  >
                     Password
                   </label>
 
                   <input
+                    id="employee-password"
                     type="password"
                     name="password"
                     className="form-control rounded-3"
@@ -884,11 +803,16 @@ function AdminEmployees() {
                 </div>
 
                 <div className="mb-4">
-                  <label className="form-label" style={{ fontSize: "12px" }}>
+                  <label
+                    htmlFor="employee-confirm-password"
+                    className="form-label"
+                    style={{ fontSize: "12px" }}
+                  >
                     Confirm password
                   </label>
 
                   <input
+                    id="employee-confirm-password"
                     type="password"
                     name="confirmPassword"
                     className="form-control rounded-3"
@@ -906,9 +830,9 @@ function AdminEmployees() {
                   className="alert alert-light border rounded-3"
                   style={{ fontSize: "11px" }}
                 >
-                  The backend assigns the Employee role automatically. Use a
-                  strong, unique password and share it securely with the
-                  employee.
+                  The backend assigns the Employee role automatically.
+                  Use a strong, unique password and share it securely
+                  with the employee.
                 </div>
 
                 <div className="d-flex justify-content-end gap-2">
@@ -942,10 +866,7 @@ function AdminEmployees() {
         </div>
       )}
 
-      {/* ======================================================
-          EMPLOYEE STATUS CONFIRMATION MODAL
-      ======================================================= */}
-
+      {/* Employee status confirmation modal */}
       {selectedEmployee && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
@@ -983,7 +904,9 @@ function AdminEmployees() {
                 }}
               >
                 Are you sure you want to{" "}
-                {selectedEmployee.is_active ? "deactivate" : "activate"}{" "}
+                {selectedEmployee.is_active
+                  ? "deactivate"
+                  : "activate"}{" "}
                 <strong>{getEmployeeName(selectedEmployee)}</strong>
                 {selectedEmployee.is_active
                   ? "? They will no longer be able to access their account."
@@ -1024,9 +947,5 @@ function AdminEmployees() {
     </AdminLayout>
   );
 }
-
-// ============================================================
-// EXPORT
-// ============================================================
 
 export default AdminEmployees;

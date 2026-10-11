@@ -1,70 +1,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
+import api from "../../services/api";
 
 // ============================================================
-// API CONFIGURATION
-// ============================================================
-
-const USERS_API = "http://127.0.0.1:8000/api/accounts/users/";
-
-const USER_STATUS_API = (id) =>
-  `http://127.0.0.1:8000/api/accounts/users/${id}/status/`;
-
-// ============================================================
-// AUTHENTICATION HELPERS
-// ============================================================
-
-function getAccessToken() {
-  const keys = ["access", "accessToken", "access_token", "token", "jwt"];
-
-  for (const key of keys) {
-    const value = localStorage.getItem(key);
-    if (!value) continue;
-
-    try {
-      const parsed = JSON.parse(value);
-
-      if (typeof parsed === "string") return parsed;
-      if (parsed?.access) return parsed.access;
-      if (parsed?.accessToken) return parsed.accessToken;
-      if (parsed?.access_token) return parsed.access_token;
-    } catch {
-      return value;
-    }
-  }
-
-  const userData = localStorage.getItem("user");
-
-  if (userData) {
-    try {
-      const parsed = JSON.parse(userData);
-
-      return (
-        parsed?.access ||
-        parsed?.accessToken ||
-        parsed?.access_token ||
-        null
-      );
-    } catch {
-      // Continue without a token.
-    }
-  }
-
-  return null;
-}
-
-function getAuthHeaders() {
-  const token = getAccessToken();
-
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
-// ============================================================
-// RESPONSE HELPERS
+// HELPER FUNCTIONS
 // ============================================================
 
 function normalizeUsers(data) {
@@ -72,7 +12,6 @@ function normalizeUsers(data) {
   if (Array.isArray(data?.results)) return data.results;
   if (Array.isArray(data?.users)) return data.users;
   if (Array.isArray(data?.data)) return data.data;
-
   return [];
 }
 
@@ -106,6 +45,7 @@ function formatDate(value) {
   if (!value) return "—";
 
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) return "—";
 
   return date.toLocaleDateString("en-IN", {
@@ -132,229 +72,27 @@ function getErrorMessage(data, fallback) {
   return fallback;
 }
 
+function getApiError(error, fallback) {
+  if (error.response?.status === 401) {
+    return "Authentication failed. Please log in again.";
+  }
+
+  if (error.response?.status === 403) {
+    return "Access denied. Administrator permission is required.";
+  }
+
+  return getErrorMessage(
+    error.response?.data,
+    error.message || fallback
+  );
+}
+
 // ============================================================
-// ADMIN USERS
+// STATISTIC CARD
 // ============================================================
 
-function AdminUsers() {
-  const [users, setUsers] = useState([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [updatingId, setUpdatingId] = useState(null);
-
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  // Custom confirmation modal state.
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [showStatusModal, setShowStatusModal] = useState(false);
-
-  // ==========================================================
-  // FETCH USERS
-  // ==========================================================
-
-  const fetchUsers = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    setError("");
-    setSuccess("");
-
-    try {
-      const response = await fetch(USERS_API, {
-        method: "GET",
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(
-            "You are not authorized to view users. Please sign in again with an admin account."
-          );
-        }
-
-        throw new Error(
-          `Unable to load users. Server returned ${response.status}.`
-        );
-      }
-
-      const data = await response.json();
-      setUsers(normalizeUsers(data));
-    } catch (err) {
-      setError(
-        err.message || "Unable to load users. Check the backend connection."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
-
-  // ==========================================================
-  // USER STATISTICS
-  // ==========================================================
-
-  const statistics = useMemo(() => {
-    const activeUsers = users.filter(isUserActive).length;
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const now = new Date();
-
-    const newUsers = users.filter((user) => {
-      const joined = getJoinedDate(user);
-      if (!joined) return false;
-
-      const joinedDate = new Date(joined);
-
-      return (
-        !Number.isNaN(joinedDate.getTime()) &&
-        joinedDate >= thirtyDaysAgo &&
-        joinedDate <= now
-      );
-    }).length;
-
-    return {
-      total: users.length,
-      active: activeUsers,
-      inactive: users.length - activeUsers,
-      newUsers,
-    };
-  }, [users]);
-
-  // ==========================================================
-  // SEARCH AND FILTER
-  // ==========================================================
-
-  const filteredUsers = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return users.filter((user) => {
-      const matchesSearch =
-        !query ||
-        [
-          getUserName(user),
-          user.name,
-          user.full_name,
-          user.username,
-          user.email,
-          user.id,
-        ].some((value) =>
-          String(value ?? "").toLowerCase().includes(query)
-        );
-
-      const active = isUserActive(user);
-
-      const matchesStatus =
-        statusFilter === "ALL" ||
-        (statusFilter === "ACTIVE" && active) ||
-        (statusFilter === "INACTIVE" && !active);
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [users, search, statusFilter]);
-
-  // ==========================================================
-  // OPEN CUSTOM CONFIRMATION MODAL
-  // ==========================================================
-
-  const updateUserStatus = (user) => {
-    if (updatingId !== null) return;
-
-    setError("");
-    setSuccess("");
-    setSelectedUser(user);
-    setShowStatusModal(true);
-  };
-
-  // ==========================================================
-  // CLOSE CUSTOM CONFIRMATION MODAL
-  // ==========================================================
-
-  const closeStatusModal = () => {
-    if (updatingId !== null) return;
-
-    setShowStatusModal(false);
-    setSelectedUser(null);
-  };
-
-  // ==========================================================
-  // CONFIRM ACCOUNT STATUS UPDATE
-  // ==========================================================
-
-  const confirmUserStatusUpdate = async () => {
-    if (!selectedUser || updatingId !== null) return;
-
-    const user = selectedUser;
-    const nextActive = !isUserActive(user);
-
-    setUpdatingId(user.id);
-    setError("");
-    setSuccess("");
-
-    try {
-      const response = await fetch(USER_STATUS_API(user.id), {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          is_active: nextActive,
-        }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(
-          getErrorMessage(
-            data,
-            `Unable to update account status. Server returned ${response.status}.`
-          )
-        );
-      }
-
-      setUsers((previousUsers) =>
-        previousUsers.map((item) =>
-          item.id === user.id
-            ? {
-                ...item,
-                ...data,
-                is_active: data.is_active ?? nextActive,
-              }
-            : item
-        )
-      );
-
-      setSuccess(
-        `${getUserName(user)}'s account has been ${
-          nextActive ? "activated" : "deactivated"
-        } successfully.`
-      );
-
-      setShowStatusModal(false);
-      setSelectedUser(null);
-    } catch (err) {
-      setError(err.message || "Failed to update the account status.");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  // ==========================================================
-  // REUSABLE STATISTIC CARD
-  // ==========================================================
-
-  const StatCard = ({ title, value, color, description }) => (
+function StatCard({ title, value, color, description, loading }) {
+  return (
     <div className="col-12 col-sm-6 col-xl-3">
       <div className="card border-0 shadow-sm rounded-4 h-100">
         <div className="card-body p-4">
@@ -392,15 +130,225 @@ function AdminUsers() {
       </div>
     </div>
   );
+}
 
-  // ==========================================================
+// ============================================================
+// ADMIN USERS
+// ============================================================
+
+export default function AdminUsers() {
+  const [users, setUsers] = useState([]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // Confirmation modal state
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+
+  // ============================================================
+  // FETCH USERS
+  // ============================================================
+
+  const fetchUsers = useCallback(async (isRefresh = false, signal) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    setError("");
+    setSuccess("");
+
+    try {
+      // JWT token is automatically attached by api.js.
+      const response = await api.get("/accounts/users/", {
+        signal,
+      });
+
+      if (!signal?.aborted) {
+        setUsers(normalizeUsers(response.data));
+      }
+    } catch (err) {
+      if (signal?.aborted || err.code === "ERR_CANCELED") {
+        return;
+      }
+
+      console.error("Failed to fetch users:", err);
+
+      setError(
+        getApiError(err, "Unable to load users.")
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetchUsers(false, controller.signal);
+
+    return () => controller.abort();
+  }, [fetchUsers]);
+
+  // ============================================================
+  // USER STATISTICS
+  // ============================================================
+
+  const statistics = useMemo(() => {
+    const activeUsers = users.filter(isUserActive).length;
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const now = new Date();
+
+    const newUsers = users.filter((user) => {
+      const joined = getJoinedDate(user);
+      if (!joined) return false;
+
+      const joinedDate = new Date(joined);
+
+      return (
+        !Number.isNaN(joinedDate.getTime()) &&
+        joinedDate >= thirtyDaysAgo &&
+        joinedDate <= now
+      );
+    }).length;
+
+    return {
+      total: users.length,
+      active: activeUsers,
+      inactive: users.length - activeUsers,
+      newUsers,
+    };
+  }, [users]);
+
+  // ============================================================
+  // SEARCH AND FILTER
+  // ============================================================
+
+  const filteredUsers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const matchesSearch =
+        !query ||
+        [
+          getUserName(user),
+          user.name,
+          user.full_name,
+          user.username,
+          user.email,
+          user.id,
+        ].some((value) =>
+          String(value ?? "").toLowerCase().includes(query)
+        );
+
+      const active = isUserActive(user);
+
+      const matchesStatus =
+        statusFilter === "ALL" ||
+        (statusFilter === "ACTIVE" && active) ||
+        (statusFilter === "INACTIVE" && !active);
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [users, search, statusFilter]);
+
+  // ============================================================
+  // OPEN AND CLOSE STATUS MODAL
+  // ============================================================
+
+  const updateUserStatus = (user) => {
+    if (updatingId !== null) return;
+
+    setError("");
+    setSuccess("");
+    setSelectedUser(user);
+    setShowStatusModal(true);
+  };
+
+  const closeStatusModal = () => {
+    if (updatingId !== null) return;
+
+    setShowStatusModal(false);
+    setSelectedUser(null);
+  };
+
+  // ============================================================
+  // CONFIRM ACCOUNT STATUS UPDATE
+  // ============================================================
+
+  const confirmUserStatusUpdate = async () => {
+    if (!selectedUser || updatingId !== null) return;
+
+    const user = selectedUser;
+    const nextActive = !isUserActive(user);
+
+    setUpdatingId(user.id);
+    setError("");
+    setSuccess("");
+
+    try {
+      // PATCH request uses shared Axios authentication.
+      const response = await api.patch(
+        `/accounts/users/${user.id}/status/`,
+        {
+          is_active: nextActive,
+        }
+      );
+
+      const data = response.data || {};
+
+      setUsers((previousUsers) =>
+        previousUsers.map((item) =>
+          item.id === user.id
+            ? {
+                ...item,
+                ...data,
+                is_active: data.is_active ?? nextActive,
+              }
+            : item
+        )
+      );
+
+      setSuccess(
+        `${getUserName(user)}'s account has been ${
+          nextActive ? "activated" : "deactivated"
+        } successfully.`
+      );
+
+      setShowStatusModal(false);
+      setSelectedUser(null);
+    } catch (err) {
+      console.error("Failed to update user status:", err);
+
+      setError(
+        getApiError(err, "Failed to update account status.")
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ============================================================
   // PAGE UI
-  // ==========================================================
+  // ============================================================
 
   return (
     <AdminLayout>
       {/* PAGE HEADER */}
-
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1
@@ -440,7 +388,6 @@ function AdminUsers() {
       </div>
 
       {/* ALERTS */}
-
       {error && (
         <div className="alert alert-danger rounded-3" role="alert">
           <div className="d-flex justify-content-between align-items-start gap-2">
@@ -472,13 +419,13 @@ function AdminUsers() {
       )}
 
       {/* USER STATISTICS */}
-
       <div className="row g-3 mb-4">
         <StatCard
           title="TOTAL USERS"
           value={statistics.total}
           color="#1d2b2e"
           description="Registered NearSpot users"
+          loading={loading}
         />
 
         <StatCard
@@ -486,6 +433,7 @@ function AdminUsers() {
           value={statistics.active}
           color="#16866d"
           description="Accounts currently active"
+          loading={loading}
         />
 
         <StatCard
@@ -493,6 +441,7 @@ function AdminUsers() {
           value={statistics.inactive}
           color="#b42335"
           description="Accounts currently inactive"
+          loading={loading}
         />
 
         <StatCard
@@ -500,11 +449,11 @@ function AdminUsers() {
           value={statistics.newUsers}
           color="#2f6f9f"
           description="Registered in the last 30 days"
+          loading={loading}
         />
       </div>
 
       {/* SEARCH AND FILTERS */}
-
       <div className="card border-0 shadow-sm rounded-4 mb-3">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
@@ -529,7 +478,9 @@ function AdminUsers() {
               <select
                 className="form-select"
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value)
+                }
                 aria-label="Filter users by status"
               >
                 <option value="ALL">All statuses</option>
@@ -542,7 +493,6 @@ function AdminUsers() {
       </div>
 
       {/* REGISTERED USERS TABLE */}
-
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
@@ -571,22 +521,26 @@ function AdminUsers() {
             <table className="table align-middle mb-0">
               <thead>
                 <tr>
-                  {["USER", "ROLE", "STATUS", "JOINED", "ACTION"].map(
-                    (heading) => (
-                      <th
-                        key={heading}
-                        className="px-3 py-3"
-                        style={{
-                          color: "#7c8b8e",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {heading}
-                      </th>
-                    )
-                  )}
+                  {[
+                    "USER",
+                    "ROLE",
+                    "STATUS",
+                    "JOINED",
+                    "ACTION",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-3 py-3"
+                      style={{
+                        color: "#7c8b8e",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
 
@@ -629,7 +583,6 @@ function AdminUsers() {
                     return (
                       <tr key={user.id}>
                         {/* USER */}
-
                         <td
                           className="px-3 py-3"
                           style={{ minWidth: "200px" }}
@@ -666,7 +619,6 @@ function AdminUsers() {
                         </td>
 
                         {/* ROLE */}
-
                         <td
                           className="py-3"
                           style={{
@@ -678,13 +630,14 @@ function AdminUsers() {
                         </td>
 
                         {/* STATUS */}
-
                         <td className="py-3">
                           <span
                             className="badge rounded-pill px-3 py-2"
                             style={{
                               color: active ? "#16866d" : "#b42335",
-                              background: active ? "#e6f7f1" : "#fff0f0",
+                              background: active
+                                ? "#e6f7f1"
+                                : "#fff0f0",
                               fontSize: "10px",
                               fontWeight: 600,
                             }}
@@ -694,7 +647,6 @@ function AdminUsers() {
                         </td>
 
                         {/* JOINED */}
-
                         <td
                           className="py-3"
                           style={{
@@ -707,14 +659,17 @@ function AdminUsers() {
                         </td>
 
                         {/* ACTION */}
-
                         <td className="py-3 pe-3 text-end">
                           <button
                             type="button"
                             className="btn btn-sm rounded-3"
                             style={{
-                              color: active ? "#b42335" : "#16866d",
-                              background: active ? "#fff0f0" : "#e6f7f1",
+                              color: active
+                                ? "#b42335"
+                                : "#16866d",
+                              background: active
+                                ? "#fff0f0"
+                                : "#e6f7f1",
                               fontSize: "11px",
                               fontWeight: 600,
                               whiteSpace: "nowrap",
@@ -747,7 +702,6 @@ function AdminUsers() {
           </div>
 
           {/* TABLE FOOTER */}
-
           {!loading && filteredUsers.length > 0 && (
             <div
               className="d-flex flex-column flex-sm-row justify-content-between gap-2 px-3 px-md-4 py-3 border-top"
@@ -768,10 +722,7 @@ function AdminUsers() {
         </div>
       </div>
 
-      {/* ========================================================
-          CUSTOM ACCOUNT STATUS CONFIRMATION MODAL
-      ======================================================== */}
-
+      {/* ACCOUNT STATUS CONFIRMATION MODAL */}
       {showStatusModal && selectedUser && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
@@ -799,9 +750,8 @@ function AdminUsers() {
             aria-modal="true"
             aria-labelledby="account-status-title"
           >
-            {/* MODAL CONTENT */}
-
             <div className="p-4">
+              {/* MODAL ICON */}
               <div
                 className="d-flex align-items-center justify-content-center rounded-circle mb-3"
                 style={{
@@ -815,7 +765,12 @@ function AdminUsers() {
                     : "#16866d",
                 }}
               >
-                <span style={{ fontSize: "24px", fontWeight: 700 }}>
+                <span
+                  style={{
+                    fontSize: "24px",
+                    fontWeight: 700,
+                  }}
+                >
                   {isUserActive(selectedUser) ? "!" : "✓"}
                 </span>
               </div>
@@ -843,7 +798,9 @@ function AdminUsers() {
               >
                 Are you sure you want to{" "}
                 <strong>
-                  {isUserActive(selectedUser) ? "deactivate" : "activate"}
+                  {isUserActive(selectedUser)
+                    ? "deactivate"
+                    : "activate"}
                 </strong>{" "}
                 the account for{" "}
                 <strong style={{ color: "#1d2b2e" }}>
@@ -853,7 +810,6 @@ function AdminUsers() {
               </p>
 
               {/* CURRENT AND NEW STATUS */}
-
               <div
                 className="rounded-3 p-3 mb-4"
                 style={{
@@ -862,7 +818,12 @@ function AdminUsers() {
                 }}
               >
                 <div className="d-flex justify-content-between align-items-center gap-3">
-                  <span style={{ color: "#7c8b8e", fontSize: "12px" }}>
+                  <span
+                    style={{
+                      color: "#7c8b8e",
+                      fontSize: "12px",
+                    }}
+                  >
                     Current status
                   </span>
 
@@ -878,12 +839,19 @@ function AdminUsers() {
                       fontSize: "11px",
                     }}
                   >
-                    {isUserActive(selectedUser) ? "Active" : "Inactive"}
+                    {isUserActive(selectedUser)
+                      ? "Active"
+                      : "Inactive"}
                   </span>
                 </div>
 
                 <div className="d-flex justify-content-between align-items-center gap-3 mt-3">
-                  <span style={{ color: "#7c8b8e", fontSize: "12px" }}>
+                  <span
+                    style={{
+                      color: "#7c8b8e",
+                      fontSize: "12px",
+                    }}
+                  >
                     New status
                   </span>
 
@@ -899,13 +867,14 @@ function AdminUsers() {
                       fontSize: "11px",
                     }}
                   >
-                    {isUserActive(selectedUser) ? "Inactive" : "Active"}
+                    {isUserActive(selectedUser)
+                      ? "Inactive"
+                      : "Active"}
                   </span>
                 </div>
               </div>
 
               {/* MODAL ACTIONS */}
-
               <div className="d-flex justify-content-end gap-2">
                 <button
                   type="button"
@@ -951,7 +920,6 @@ function AdminUsers() {
       )}
 
       {/* MODAL ANIMATION */}
-
       <style>
         {`
           @keyframes nearSpotModalIn {
@@ -969,9 +937,3 @@ function AdminUsers() {
     </AdminLayout>
   );
 }
-
-// ============================================================
-// EXPORT
-// ============================================================
-
-export default AdminUsers;

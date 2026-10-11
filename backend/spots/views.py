@@ -3,9 +3,15 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from accounts.permissions import IsAdmin, IsUser,IsAdminOrEmployee
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny,IsAuthenticated
+from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Count, Q
+from rest_framework import status
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.exceptions import PermissionDenied
+
+
 from .models import (
     Category,
     HiddenSpot,
@@ -14,6 +20,8 @@ from .models import (
     CommunityVerification,
     SpotMedia,
     AuditLog,
+    Review,
+    SavedSpot,
 )
 from django.contrib.gis.geos import Point
 from django.contrib.gis.db.models.functions import Distance
@@ -33,7 +41,12 @@ from .serializers import (
     CommunityVerificationSerializer,
     CommunitySpotSerializer,
     SpotMediaSerializer,
-    AuditLogSerializer
+    AuditLogSerializer,
+    ReviewSerializer,
+    SavedSpotSerializer,
+    SavedSpotListSerializer,
+    MyReviewSerializer,
+
 )
 
 
@@ -116,47 +129,6 @@ class EmployeeSpotDetailView(generics.RetrieveAPIView):
             .prefetch_related("media")
         )
 
-class ApproveSpotView(APIView):
-
-    permission_classes = [IsAdminOrEmployee]
-
-    def post(self, request, pk):
-
-        try:
-            spot = HiddenSpot.objects.get(pk=pk)
-        except HiddenSpot.DoesNotExist:
-            return Response(
-                {"error": "Spot not found."},
-                status=404
-            )
-
-        if spot.status != HiddenSpot.Status.PENDING:
-            return Response(
-                {
-                    "error": "Only pending spots can be approved."
-                },
-                status=400
-            )
-
-        spot.status = HiddenSpot.Status.APPROVED
-        spot.rejection_reason = ""
-        spot.save()
-
-        verification = Verification.objects.create(
-            spot=spot,
-            employee=request.user,
-            action=Verification.Action.APPROVED,
-            reason=""
-        )
-
-        return Response(
-            {
-                "message": "Spot approved successfully.",
-                "spot_id": spot.id,
-                "status": spot.status,
-                "verification_id": verification.id,
-            }
-        )
 class ApprovedSpotDetailView(generics.RetrieveAPIView):
     serializer_class = ApprovedSpotSerializer
     permission_classes = [AllowAny]
@@ -798,3 +770,93 @@ class EmployeeDashboardStatsView(APIView):
             "my_reviews": review_stats,
             "recent_activity": recent_activity,
         })
+
+
+
+
+# ============================================================
+# REVIEW VIEWS
+# ============================================================
+class ReviewListCreateView(generics.ListCreateAPIView):
+    """GET /spots/<pk>/reviews/ — list
+       POST /spots/<pk>/reviews/ — create"""
+    serializer_class = ReviewSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsUser()]
+        return [AllowAny()]
+    def get_queryset(self):
+        spot = get_object_or_404(HiddenSpot, pk=self.kwargs["pk"], status=HiddenSpot.Status.APPROVED)
+        return Review.objects.filter(spot=spot).select_related("user").prefetch_related("media").order_by("-created_at")
+    def perform_create(self, serializer):
+        spot = get_object_or_404(HiddenSpot, pk=self.kwargs["pk"], status=HiddenSpot.Status.APPROVED)
+        serializer.save(spot=spot, user=self.request.user)
+class ReviewDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PUT/PATCH/DELETE /spots/<pk>/reviews/<review_pk>/"""
+    serializer_class = ReviewSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    permission_classes = [IsUser]
+    lookup_url_kwarg = "review_pk"
+    def get_queryset(self):
+        spot = get_object_or_404(HiddenSpot, pk=self.kwargs["pk"], status=HiddenSpot.Status.APPROVED)
+        return Review.objects.filter(spot=spot).select_related("user").prefetch_related("media")
+    def get_object(self):
+        review = super().get_object()
+        if self.request.method in ("PUT", "PATCH", "DELETE") and review.user != self.request.user:
+            raise PermissionDenied("You can only edit your own reviews.")
+        return review
+# =========================
+# SAVED SPOT VIEWS
+# =========================
+class SavedSpotListView(generics.ListAPIView):
+    """GET /api/spots/saved/ — list current user's saved spots."""
+    serializer_class = SavedSpotListSerializer
+    permission_classes = [IsUser]
+    def get_queryset(self):
+        return SavedSpot.objects.filter(user=self.request.user).select_related(
+            "spot", "spot__category"
+        ).prefetch_related("spot__media").order_by("-saved_at")
+
+
+
+
+
+# backend/spots/views.py — add this class (e.g., after SavedSpotListView)
+
+class SavedSpotView(APIView):
+    """
+    POST   /api/spots/<pk>/save/   — save a spot
+    DELETE /api/spots/<pk>/save/   — unsave a spot
+    """
+    permission_classes = [IsUser]
+
+    def post(self, request, pk):
+        spot = get_object_or_404(HiddenSpot, pk=pk, status=HiddenSpot.Status.APPROVED)
+        saved_spot, created = SavedSpot.objects.get_or_create(spot=spot, user=request.user)
+        if not created:
+            return Response({"detail": "Spot already saved."}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = SavedSpotSerializer(saved_spot, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, pk):
+        spot = get_object_or_404(HiddenSpot, pk=pk)
+        deleted, _ = SavedSpot.objects.filter(spot=spot, user=request.user).delete()
+        if not deleted:
+            return Response({"detail": "Spot not in saved list."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+
+
+
+
+class MyReviewListView(generics.ListAPIView):
+    """GET /api/spots/my-reviews/ — list current user's reviews across all spots."""
+    serializer_class = MyReviewSerializer
+    permission_classes = [IsUser]
+
+    def get_queryset(self):
+        return Review.objects.filter(user=self.request.user).select_related(
+            "spot", "spot__category"
+        ).prefetch_related("media").order_by("-created_at")

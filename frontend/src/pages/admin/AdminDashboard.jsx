@@ -1,20 +1,7 @@
 
- // ============================================================
-// IMPORTS
-// ============================================================
-
 import { useCallback, useEffect, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
-
-// ============================================================
-// API CONFIGURATION
-// ============================================================
-
-const DASHBOARD_API =
-  "http://127.0.0.1:8000/api/accounts/admin-dashboard/";
-
-const AUDIT_LOGS_API =
-  "http://127.0.0.1:8000/api/spots/admin/audit-logs/";
+import api from "../../services/api";
 
 // ============================================================
 // REUSABLE STATISTIC CARD
@@ -127,84 +114,64 @@ function StatisticRow({
 // ADMIN DASHBOARD
 // ============================================================
 
-function AdminDashboard() {
-  // ============================================================
-  // STATE
-  // ============================================================
-
+export default function AdminDashboard() {
+  // Dashboard statistics
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Recent audit logs
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLogsLoading, setAuditLogsLoading] = useState(true);
   const [auditLogsError, setAuditLogsError] = useState("");
 
   // ============================================================
-  // GET ACCESS TOKEN
-  // ============================================================
-
-  const getAccessToken = () => {
-    return (
-      localStorage.getItem("access") ||
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken")
-    );
-  };
-
-  // ============================================================
   // FETCH DASHBOARD STATISTICS
   // ============================================================
 
-  const fetchDashboardStats = useCallback(async () => {
+  const fetchDashboardStats = useCallback(async (signal) => {
     setLoading(true);
     setError("");
 
     try {
-      const token = getAccessToken();
-
-      if (!token) {
-        throw new Error(
-          "Access token not found. Please log in again or verify the token key in AuthContext."
-        );
-      }
-
-      const response = await fetch(DASHBOARD_API, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error(
-            "Authentication failed. Please log in again."
-          );
-        }
-
-        if (response.status === 403) {
-          throw new Error(
-            "Access denied. Please log in using an admin account."
-          );
-        }
-
-        throw new Error(
-          `Unable to load dashboard statistics. HTTP ${response.status}.`
-        );
-      }
-
-      const data = await response.json();
-
-      setStats(data);
-    } catch (err) {
-      setError(
-        err.message ||
-          "Something went wrong while loading dashboard statistics."
+      // Axios automatically attaches the JWT access token.
+      const response = await api.get(
+        "/accounts/admin-dashboard/",
+        { signal }
       );
+
+      if (!signal?.aborted) {
+        setStats(response.data);
+      }
+    } catch (err) {
+      if (
+        signal?.aborted ||
+        err.code === "ERR_CANCELED"
+      ) {
+        return;
+      }
+
+      console.error("Dashboard statistics error:", err);
+
+      if (err.response?.status === 401) {
+        setError(
+          "Authentication failed. Please log in again."
+        );
+      } else if (err.response?.status === 403) {
+        setError(
+          "Access denied. Please log in using an admin account."
+        );
+      } else {
+        setError(
+          err.response?.data?.detail ||
+            err.message ||
+            "Something went wrong while loading dashboard statistics."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -212,44 +179,18 @@ function AdminDashboard() {
   // FETCH RECENT AUDIT LOGS
   // ============================================================
 
-  const fetchAuditLogs = useCallback(async () => {
+  const fetchAuditLogs = useCallback(async (signal) => {
     setAuditLogsLoading(true);
     setAuditLogsError("");
 
     try {
-      const token = getAccessToken();
+      // Use the same authenticated Axios instance.
+      const response = await api.get(
+        "/spots/admin/audit-logs/",
+        { signal }
+      );
 
-      if (!token) {
-        throw new Error("Access token not found. Please log in again.");
-      }
-
-      const response = await fetch(AUDIT_LOGS_API, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error(
-            "Authentication failed. Please log in again."
-          );
-        }
-
-        if (response.status === 403) {
-          throw new Error(
-            "You do not have permission to view audit logs."
-          );
-        }
-
-        throw new Error(
-          `Unable to load activity logs. HTTP ${response.status}.`
-        );
-      }
-
-      const data = await response.json();
+      const data = response.data;
 
       if (!Array.isArray(data)) {
         throw new Error(
@@ -257,14 +198,39 @@ function AdminDashboard() {
         );
       }
 
-      // The API returns newest activity first.
-      setAuditLogs(data.slice(0, 6));
+      if (!signal?.aborted) {
+        // Show the six most recent records.
+        setAuditLogs(data.slice(0, 6));
+      }
     } catch (err) {
-      setAuditLogsError(
-        err.message || "Unable to load recent activity."
-      );
+      if (
+        signal?.aborted ||
+        err.code === "ERR_CANCELED"
+      ) {
+        return;
+      }
+
+      console.error("Audit logs error:", err);
+
+      if (err.response?.status === 401) {
+        setAuditLogsError(
+          "Authentication failed. Please log in again."
+        );
+      } else if (err.response?.status === 403) {
+        setAuditLogsError(
+          "You do not have permission to view audit logs."
+        );
+      } else {
+        setAuditLogsError(
+          err.response?.data?.detail ||
+            err.message ||
+            "Unable to load recent activity."
+        );
+      }
     } finally {
-      setAuditLogsLoading(false);
+      if (!signal?.aborted) {
+        setAuditLogsLoading(false);
+      }
     }
   }, []);
 
@@ -273,12 +239,16 @@ function AdminDashboard() {
   // ============================================================
 
   useEffect(() => {
-    fetchDashboardStats();
-    fetchAuditLogs();
+    const controller = new AbortController();
+
+    fetchDashboardStats(controller.signal);
+    fetchAuditLogs(controller.signal);
+
+    return () => controller.abort();
   }, [fetchDashboardStats, fetchAuditLogs]);
 
   // ============================================================
-  // FORMAT STATISTIC VALUES
+  // FORMAT HELPERS
   // ============================================================
 
   const formatValue = (number) => {
@@ -286,20 +256,15 @@ function AdminDashboard() {
       return "...";
     }
 
-    return (number ?? 0).toLocaleString();
+    return Number(number ?? 0).toLocaleString();
   };
-
-  // ============================================================
-  // FORMAT AUDIT LOG ACTION
-  // ============================================================
 
   const formatAction = (action) => {
-    return (action || "ACTIVITY").replaceAll("_", " ");
+    return String(action || "ACTIVITY").replaceAll(
+      "_",
+      " "
+    );
   };
-
-  // ============================================================
-  // FORMAT AUDIT LOG TIMESTAMP
-  // ============================================================
 
   const formatDate = (dateString) => {
     if (!dateString) {
@@ -314,10 +279,6 @@ function AdminDashboard() {
 
     return date.toLocaleString();
   };
-
-  // ============================================================
-  // GET AUDIT LOG ICON LETTER
-  // ============================================================
 
   const getActivityLetter = (action) => {
     if (action?.startsWith("REPORT")) {
@@ -337,10 +298,7 @@ function AdminDashboard() {
 
   return (
     <AdminLayout>
-      {/* ======================================================
-          PAGE HEADER
-      ======================================================= */}
-
+      {/* Page Header */}
       <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
         <div>
           <h1
@@ -379,10 +337,7 @@ function AdminDashboard() {
         </button>
       </div>
 
-      {/* ======================================================
-          DASHBOARD ERROR
-      ======================================================= */}
-
+      {/* Dashboard Error */}
       {error && (
         <div
           className="alert alert-danger rounded-3 d-flex flex-wrap justify-content-between align-items-center gap-2"
@@ -393,17 +348,15 @@ function AdminDashboard() {
           <button
             type="button"
             className="btn btn-sm btn-outline-danger"
-            onClick={fetchDashboardStats}
+            onClick={() => fetchDashboardStats()}
+            disabled={loading}
           >
             Try again
           </button>
         </div>
       )}
 
-      {/* ======================================================
-          OVERVIEW STATISTICS
-      ======================================================= */}
-
+      {/* Overview Statistics */}
       <div className="row g-3">
         <StatCard
           title="TOTAL USERS"
@@ -431,15 +384,9 @@ function AdminDashboard() {
         />
       </div>
 
-      {/* ======================================================
-          SPOT AND REPORT STATISTICS
-      ======================================================= */}
-
+      {/* Spot and Report Statistics */}
       <div className="row g-3 mt-1">
-        {/* ----------------------------------------------------
-            SPOT MANAGEMENT
-        ----------------------------------------------------- */}
-
+        {/* Spot Management */}
         <div className="col-12 col-xl-6">
           <SectionCard title="Spot Management">
             <StatisticRow
@@ -472,10 +419,7 @@ function AdminDashboard() {
           </SectionCard>
         </div>
 
-        {/* ----------------------------------------------------
-            REPORT MANAGEMENT
-        ----------------------------------------------------- */}
-
+        {/* Report Management */}
         <div className="col-12 col-xl-6">
           <SectionCard title="Report Management">
             <StatisticRow
@@ -504,15 +448,9 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* ======================================================
-          PLATFORM SUMMARY AND PENDING ACTIONS
-      ======================================================= */}
-
+      {/* Platform Summary and Pending Actions */}
       <div className="row g-3 mt-1">
-        {/* ----------------------------------------------------
-            PLATFORM SUMMARY
-        ----------------------------------------------------- */}
-
+        {/* Platform Summary */}
         <div className="col-12 col-xl-4">
           <SectionCard title="Platform Summary">
             <StatisticRow
@@ -537,10 +475,7 @@ function AdminDashboard() {
           </SectionCard>
         </div>
 
-        {/* ----------------------------------------------------
-            PENDING ACTIONS
-        ----------------------------------------------------- */}
-
+        {/* Pending Actions */}
         <div className="col-12 col-xl-8">
           <SectionCard title="Pending Actions">
             <p
@@ -553,9 +488,12 @@ function AdminDashboard() {
               Items that may require your attention.
             </p>
 
+            {/* Pending Spots */}
             <div
               className="d-flex justify-content-between align-items-center gap-3 p-3 rounded-3 mb-3"
-              style={{ background: "#fff8e8" }}
+              style={{
+                backgroundColor: "#fff8e8",
+              }}
             >
               <div>
                 <div
@@ -589,9 +527,12 @@ function AdminDashboard() {
               </span>
             </div>
 
+            {/* Pending Reports */}
             <div
               className="d-flex justify-content-between align-items-center gap-3 p-3 rounded-3"
-              style={{ background: "#fff0f0" }}
+              style={{
+                backgroundColor: "#fff0f0",
+              }}
             >
               <div>
                 <div
@@ -628,18 +569,12 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* ======================================================
-          RECENT ACTIVITY
-      ======================================================= */}
-
+      {/* Recent Activity */}
       <div className="row g-3 mt-1">
         <div className="col-12">
           <div className="card border-0 shadow-sm rounded-4">
             <div className="card-body p-4">
-              {/* ------------------------------------------------
-                  ACTIVITY HEADER
-              ------------------------------------------------- */}
-
+              {/* Activity Header */}
               <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
                 <div>
                   <h5
@@ -666,17 +601,16 @@ function AdminDashboard() {
                 <button
                   type="button"
                   className="btn btn-outline-secondary btn-sm rounded-3"
-                  onClick={fetchAuditLogs}
+                  onClick={() => fetchAuditLogs()}
                   disabled={auditLogsLoading}
                 >
-                  {auditLogsLoading ? "Loading..." : "Refresh activity"}
+                  {auditLogsLoading
+                    ? "Loading..."
+                    : "Refresh activity"}
                 </button>
               </div>
 
-              {/* ------------------------------------------------
-                  ACTIVITY ERROR
-              ------------------------------------------------- */}
-
+              {/* Activity Error */}
               {auditLogsError && (
                 <div
                   className="alert alert-danger py-2 rounded-3"
@@ -688,7 +622,8 @@ function AdminDashboard() {
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-danger"
-                      onClick={fetchAuditLogs}
+                      onClick={() => fetchAuditLogs()}
+                      disabled={auditLogsLoading}
                     >
                       Try again
                     </button>
@@ -696,10 +631,7 @@ function AdminDashboard() {
                 </div>
               )}
 
-              {/* ------------------------------------------------
-                  ACTIVITY LOADING
-              ------------------------------------------------- */}
-
+              {/* Activity Loading */}
               {auditLogsLoading && (
                 <div
                   className="text-center py-4"
@@ -712,10 +644,7 @@ function AdminDashboard() {
                 </div>
               )}
 
-              {/* ------------------------------------------------
-                  EMPTY ACTIVITY STATE
-              ------------------------------------------------- */}
-
+              {/* Empty Activity State */}
               {!auditLogsLoading &&
                 !auditLogsError &&
                 auditLogs.length === 0 && (
@@ -730,29 +659,27 @@ function AdminDashboard() {
                   </div>
                 )}
 
-              {/* ------------------------------------------------
-                  ACTIVITY LIST
-              ------------------------------------------------- */}
-
+              {/* Activity List */}
               {!auditLogsLoading &&
                 auditLogs.map((log) => (
                   <div
                     key={log.id}
                     className="d-flex gap-3 py-3 border-bottom"
                   >
-                    {/* ACTIVITY ICON */}
-
+                    {/* Activity Icon */}
                     <div
                       className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
                       style={{
                         width: "38px",
                         height: "38px",
-                        background: log.action?.startsWith("REPORT")
-                          ? "#eaf1ff"
-                          : "#eaf5ef",
-                        color: log.action?.startsWith("REPORT")
-                          ? "#0d6efd"
-                          : "#198754",
+                        background:
+                          log.action?.startsWith("REPORT")
+                            ? "#eaf1ff"
+                            : "#eaf5ef",
+                        color:
+                          log.action?.startsWith("REPORT")
+                            ? "#0d6efd"
+                            : "#198754",
                         fontSize: "15px",
                         fontWeight: 700,
                       }}
@@ -760,8 +687,7 @@ function AdminDashboard() {
                       {getActivityLetter(log.action)}
                     </div>
 
-                    {/* ACTIVITY DETAILS */}
-
+                    {/* Activity Details */}
                     <div
                       className="flex-grow-1"
                       style={{ minWidth: 0 }}
@@ -807,9 +733,3 @@ function AdminDashboard() {
     </AdminLayout>
   );
 }
-
-// ============================================================
-// EXPORT
-// ============================================================
-
-export default AdminDashboard;

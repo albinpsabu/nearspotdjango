@@ -1,83 +1,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
-
-// ============================================================
-// API CONFIGURATION
-// ============================================================
-
-const REPORTS_API = "http://127.0.0.1:8000/api/spots/reports/";
-
-const REPORT_STATUS_API = (id) =>
-  `http://127.0.0.1:8000/api/spots/reports/${id}/status/`;
+import api from "../../services/api";
 
 const STATUS_OPTIONS = [
   { value: "PENDING", label: "Pending" },
   { value: "REVIEWED", label: "Reviewed" },
   { value: "RESOLVED", label: "Resolved" },
 ];
-
-// ============================================================
-// AUTHENTICATION HELPERS
-// ============================================================
-
-function getAccessToken() {
-  const possibleKeys = [
-    "access",
-    "accessToken",
-    "access_token",
-    "token",
-    "jwt",
-  ];
-
-  for (const key of possibleKeys) {
-    const value = localStorage.getItem(key);
-
-    if (value) {
-      try {
-        const parsed = JSON.parse(value);
-
-        if (typeof parsed === "string") return parsed;
-        if (parsed?.access) return parsed.access;
-        if (parsed?.accessToken) return parsed.accessToken;
-        if (parsed?.access_token) return parsed.access_token;
-      } catch {
-        return value;
-      }
-    }
-  }
-
-  const userData = localStorage.getItem("user");
-
-  if (userData) {
-    try {
-      const parsed = JSON.parse(userData);
-      return (
-        parsed?.access ||
-        parsed?.accessToken ||
-        parsed?.access_token ||
-        null
-      );
-    } catch {
-      // The user value is not a JSON object.
-    }
-  }
-
-  return null;
-}
-
-function getAuthHeaders() {
-  const token = getAccessToken();
-
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
-// ============================================================
-// DATA HELPERS
-// ============================================================
 
 function normalizeReports(data) {
   if (Array.isArray(data)) return data;
@@ -87,10 +17,9 @@ function normalizeReports(data) {
   return [];
 }
 
-function formatDate(dateValue) {
-  if (!dateValue) return "—";
-
-  const date = new Date(dateValue);
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) return "—";
 
@@ -106,7 +35,9 @@ function getReporterName(report) {
     report.reported_by_name ||
     report.reporter_name ||
     report.reported_by_email ||
-    (report.reported_by ? `User #${report.reported_by}` : "Unknown user")
+    (report.reported_by
+      ? `User #${report.reported_by}`
+      : "Unknown user")
   );
 }
 
@@ -120,18 +51,9 @@ function getSpotName(report) {
 
 function getStatusStyle(status) {
   const styles = {
-    PENDING: {
-      color: "#b7791f",
-      background: "#fff7e6",
-    },
-    REVIEWED: {
-      color: "#2563a6",
-      background: "#eaf3ff",
-    },
-    RESOLVED: {
-      color: "#16866d",
-      background: "#e6f7f1",
-    },
+    PENDING: { color: "#b7791f", background: "#fff7e6" },
+    REVIEWED: { color: "#2563a6", background: "#eaf3ff" },
+    RESOLVED: { color: "#16866d", background: "#e6f7f1" },
   };
 
   return styles[status] || {
@@ -140,161 +62,31 @@ function getStatusStyle(status) {
   };
 }
 
-// ============================================================
-// ADMIN REPORTS
-// ============================================================
+function getApiError(error, fallback) {
+  if (error.response?.status === 401) {
+    return "Authentication failed. Please log in again.";
+  }
 
-function AdminReports() {
-  const [reports, setReports] = useState([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [updatingId, setUpdatingId] = useState(null);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  if (error.response?.status === 403) {
+    return "Access denied. Administrator or employee permission is required.";
+  }
 
-  // ==========================================================
-  // FETCH REPORTS
-  // ==========================================================
+  const data = error.response?.data;
 
-  const fetchReports = useCallback(async (showRefresh = false) => {
-    if (showRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+  const detail =
+    data?.detail ||
+    data?.error ||
+    data?.message ||
+    data?.status?.[0];
 
-    setError("");
-    setSuccess("");
+  if (typeof detail === "string") return detail;
+  if (detail) return JSON.stringify(detail);
 
-    try {
-      const response = await fetch(REPORTS_API, {
-        method: "GET",
-        headers: getAuthHeaders(),
-      });
+  return error.message || fallback;
+}
 
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(
-            "You are not authorized to view reports. Please sign in again with an admin or employee account."
-          );
-        }
-
-        throw new Error(
-          `Unable to load reports. Server returned ${response.status}.`
-        );
-      }
-
-      const data = await response.json();
-      setReports(normalizeReports(data));
-    } catch (err) {
-      setError(
-        err.message ||
-          "Unable to load reports. Check the backend server and connection."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchReports();
-  }, [fetchReports]);
-
-  // ==========================================================
-  // REPORT STATISTICS
-  // ==========================================================
-
-  const statistics = useMemo(
-    () => ({
-      total: reports.length,
-      pending: reports.filter((r) => r.status === "PENDING").length,
-      reviewed: reports.filter((r) => r.status === "REVIEWED").length,
-      resolved: reports.filter((r) => r.status === "RESOLVED").length,
-    }),
-    [reports]
-  );
-
-  // ==========================================================
-  // SEARCH AND FILTER
-  // ==========================================================
-
-  const filteredReports = useMemo(() => {
-    const searchValue = search.trim().toLowerCase();
-
-    return reports.filter((report) => {
-      const matchesSearch =
-        !searchValue ||
-        [
-          report.id,
-          report.reason,
-          getSpotName(report),
-          getReporterName(report),
-          report.reported_by_email,
-        ].some((value) =>
-          String(value ?? "").toLowerCase().includes(searchValue)
-        );
-
-      const matchesStatus =
-        statusFilter === "ALL" || report.status === statusFilter;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [reports, search, statusFilter]);
-
-  // ==========================================================
-  // UPDATE REPORT STATUS
-  // ==========================================================
-
-  const updateReportStatus = async (reportId, newStatus) => {
-    setUpdatingId(reportId);
-    setError("");
-    setSuccess("");
-
-    try {
-      const response = await fetch(REPORT_STATUS_API(reportId), {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      const responseData = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        const detail =
-          responseData?.status?.[0] ||
-          responseData?.detail ||
-          responseData?.status ||
-          `Unable to update report. Server returned ${response.status}.`;
-
-        throw new Error(
-          typeof detail === "string" ? detail : JSON.stringify(detail)
-        );
-      }
-
-      setReports((previousReports) =>
-        previousReports.map((report) =>
-          report.id === reportId
-            ? { ...report, ...responseData, status: newStatus }
-            : report
-        )
-      );
-
-      setSuccess(`Report #${reportId} updated to ${newStatus}.`);
-    } catch (err) {
-      setError(err.message || "Failed to update report status.");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  // ==========================================================
-  // REUSABLE STATISTIC CARD
-  // ==========================================================
-
-  const StatCard = ({ title, value, color, description }) => (
+function StatCard({ title, value, color, description, loading }) {
+  return (
     <div className="col-12 col-sm-6 col-xl-3">
       <div className="card border-0 shadow-sm rounded-4 h-100">
         <div className="card-body p-4">
@@ -311,10 +103,7 @@ function AdminReports() {
 
           <div
             className="fw-bold"
-            style={{
-              color: "#1d2b2e",
-              fontSize: "26px",
-            }}
+            style={{ color: "#1d2b2e", fontSize: "26px" }}
           >
             {loading ? "…" : value}
           </div>
@@ -333,15 +122,128 @@ function AdminReports() {
       </div>
     </div>
   );
+}
 
-  // ==========================================================
-  // PAGE UI
-  // ==========================================================
+function AdminReports() {
+  const [reports, setReports] = useState([]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // Load reports using the shared authenticated Axios client.
+  const fetchReports = useCallback(async (showRefresh = false, signal) => {
+    if (showRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    setError("");
+
+    try {
+      const response = await api.get("/spots/reports/", { signal });
+
+      if (!signal?.aborted) {
+        setReports(normalizeReports(response.data));
+      }
+    } catch (err) {
+      if (signal?.aborted || err.code === "ERR_CANCELED") return;
+
+      console.error("Failed to load reports:", err);
+      setError(getApiError(err, "Unable to load reports."));
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetchReports(false, controller.signal);
+
+    return () => controller.abort();
+  }, [fetchReports]);
+
+  const statistics = useMemo(
+    () => ({
+      total: reports.length,
+      pending: reports.filter((r) => r.status === "PENDING").length,
+      reviewed: reports.filter((r) => r.status === "REVIEWED").length,
+      resolved: reports.filter((r) => r.status === "RESOLVED").length,
+    }),
+    [reports]
+  );
+
+  const filteredReports = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return reports.filter((report) => {
+      const matchesSearch =
+        !query ||
+        [
+          report.id,
+          report.reason,
+          getSpotName(report),
+          getReporterName(report),
+          report.reported_by_email,
+        ].some((value) =>
+          String(value ?? "").toLowerCase().includes(query)
+        );
+
+      const matchesStatus =
+        statusFilter === "ALL" || report.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [reports, search, statusFilter]);
+
+  // Update the report status through the authenticated API.
+  const updateReportStatus = async (reportId, newStatus) => {
+    if (updatingId !== null) return;
+
+    setUpdatingId(reportId);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await api.patch(
+        `/spots/reports/${reportId}/status/`,
+        { status: newStatus }
+      );
+
+      setReports((previous) =>
+        previous.map((report) =>
+          String(report.id) === String(reportId)
+            ? {
+                ...report,
+                ...(response.data || {}),
+                status: newStatus,
+              }
+            : report
+        )
+      );
+
+      setSuccess(`Report #${reportId} updated to ${newStatus}.`);
+    } catch (err) {
+      console.error("Failed to update report status:", err);
+      setError(getApiError(err, "Failed to update report status."));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   return (
     <AdminLayout>
-      {/* PAGE HEADER */}
-
+      {/* Page header */}
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1
@@ -374,8 +276,7 @@ function AdminReports() {
         </button>
       </div>
 
-      {/* ALERTS */}
-
+      {/* Alerts */}
       {error && (
         <div
           className="alert alert-danger rounded-3"
@@ -412,40 +313,39 @@ function AdminReports() {
         </div>
       )}
 
-      {/* REPORT STATISTICS */}
-
+      {/* Report statistics */}
       <div className="row g-3 mb-4">
         <StatCard
           title="TOTAL REPORTS"
           value={statistics.total}
           color="#1d2b2e"
           description="All submitted reports"
+          loading={loading}
         />
-
         <StatCard
           title="PENDING"
           value={statistics.pending}
           color="#c78318"
           description="Requires review"
+          loading={loading}
         />
-
         <StatCard
           title="REVIEWED"
           value={statistics.reviewed}
           color="#2563a6"
           description="Reports reviewed"
+          loading={loading}
         />
-
         <StatCard
           title="RESOLVED"
           value={statistics.resolved}
           color="#16866d"
           description="Reports resolved"
+          loading={loading}
         />
       </div>
 
-      {/* SEARCH AND FILTERS */}
-
+      {/* Search and filters */}
       <div className="card border-0 shadow-sm rounded-4 mb-3">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
@@ -470,13 +370,17 @@ function AdminReports() {
               <select
                 className="form-select"
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value)
+                }
                 aria-label="Filter reports by status"
               >
                 <option value="ALL">All statuses</option>
-                <option value="PENDING">Pending</option>
-                <option value="REVIEWED">Reviewed</option>
-                <option value="RESOLVED">Resolved</option>
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -495,8 +399,7 @@ function AdminReports() {
         </div>
       </div>
 
-      {/* REPORTED CONTENT TABLE */}
-
+      {/* Reports table */}
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
@@ -546,22 +449,14 @@ function AdminReports() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td
-                      colSpan="6"
-                      className="text-center py-5"
-                      style={{ color: "#8a989a", fontSize: "12px" }}
-                    >
+                    <td colSpan="6" className="text-center py-5 text-muted">
                       Loading reports...
                     </td>
                   </tr>
                 ) : filteredReports.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan="6"
-                      className="text-center py-5"
-                      style={{ color: "#9aa6a8", fontSize: "12px" }}
-                    >
-                      {error
+                    <td colSpan="6" className="text-center py-5 text-muted">
+                      {error && reports.length === 0
                         ? "Reports could not be loaded. Check the error above."
                         : reports.length === 0
                           ? "No reports have been submitted yet."
@@ -575,11 +470,12 @@ function AdminReports() {
 
                     return (
                       <tr key={report.id}>
-                        {/* REPORT */}
-
                         <td
                           className="px-3 py-3"
-                          style={{ minWidth: "220px", maxWidth: "320px" }}
+                          style={{
+                            minWidth: "220px",
+                            maxWidth: "320px",
+                          }}
                         >
                           <div
                             className="fw-semibold mb-1"
@@ -603,8 +499,6 @@ function AdminReports() {
                           </div>
                         </td>
 
-                        {/* SPOT */}
-
                         <td
                           className="py-3"
                           style={{
@@ -615,8 +509,6 @@ function AdminReports() {
                         >
                           {getSpotName(report)}
                         </td>
-
-                        {/* REPORTED BY */}
 
                         <td
                           className="py-3"
@@ -643,8 +535,6 @@ function AdminReports() {
                           )}
                         </td>
 
-                        {/* STATUS */}
-
                         <td className="py-3">
                           <span
                             className="badge rounded-pill px-3 py-2"
@@ -659,8 +549,6 @@ function AdminReports() {
                           </span>
                         </td>
 
-                        {/* CREATED */}
-
                         <td
                           className="py-3"
                           style={{
@@ -671,8 +559,6 @@ function AdminReports() {
                         >
                           {formatDate(report.created_at)}
                         </td>
-
-                        {/* ACTION */}
 
                         <td className="py-3 pe-3 text-end">
                           <div
@@ -689,7 +575,7 @@ function AdminReports() {
                                   fontSize: "11px",
                                   fontWeight: 600,
                                 }}
-                                disabled={isUpdating || updatingId !== null}
+                                disabled={updatingId !== null}
                                 onClick={() =>
                                   updateReportStatus(report.id, "REVIEWED")
                                 }
@@ -708,7 +594,7 @@ function AdminReports() {
                                   fontSize: "11px",
                                   fontWeight: 600,
                                 }}
-                                disabled={isUpdating || updatingId !== null}
+                                disabled={updatingId !== null}
                                 onClick={() =>
                                   updateReportStatus(report.id, "RESOLVED")
                                 }
@@ -737,8 +623,6 @@ function AdminReports() {
             </table>
           </div>
 
-          {/* TABLE FOOTER */}
-
           {!loading && filteredReports.length > 0 && (
             <div
               className="d-flex flex-column flex-sm-row justify-content-between gap-2 px-3 px-md-4 py-3 border-top"
@@ -747,7 +631,6 @@ function AdminReports() {
               <span>
                 Showing {filteredReports.length} of {reports.length} reports
               </span>
-
               <span>
                 {statistics.pending} pending review
                 {statistics.pending === 1 ? "" : "s"}
@@ -759,9 +642,5 @@ function AdminReports() {
     </AdminLayout>
   );
 }
-
-// ============================================================
-// EXPORT
-// ============================================================
 
 export default AdminReports;

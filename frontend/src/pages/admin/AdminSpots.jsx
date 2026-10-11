@@ -1,100 +1,50 @@
 
- // ============================================================
-// IMPORTS
-// ============================================================
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
-
-// ============================================================
-// API CONFIGURATION
-// ============================================================
-
-const SPOTS_API =
-  "http://127.0.0.1:8000/api/spots/admin/spots/";
-
-const CATEGORIES_API =
-  "http://127.0.0.1:8000/api/spots/categories/";
-
-// ============================================================
-// AUTHENTICATION HELPER
-// ============================================================
-
-function getAccessToken() {
-  return (
-    localStorage.getItem("access") ||
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("accessToken")
-  );
-}
-
-// ============================================================
-// API RESPONSE HELPER
-// ============================================================
-
-async function apiRequest(url, options = {}) {
-  const token = getAccessToken();
-
-  if (!token) {
-    throw new Error("Access token not found. Please log in again.");
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    let message = `Request failed (HTTP ${response.status}).`;
-
-    try {
-      const errorData = await response.json();
-
-      if (typeof errorData.detail === "string") {
-        message = errorData.detail;
-      } else if (typeof errorData.error === "string") {
-        message = errorData.error;
-      } else if (errorData.message) {
-        message = errorData.message;
-      }
-    } catch {
-      // Keep the default HTTP error message.
-    }
-
-    throw new Error(message);
-  }
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
-}
-
-// ============================================================
-// NORMALIZE API LIST RESPONSES
-// ============================================================
+import api from "../../services/api";
 
 function normalizeList(data) {
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (Array.isArray(data?.results)) {
-    return data.results;
-  }
-
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.results)) return data.results;
   return [];
 }
 
-// ============================================================
-// REUSABLE STATISTIC CARD
-// ============================================================
+function getErrorMessage(error, fallback) {
+  if (error.response?.status === 401) {
+    return "Authentication failed. Please log in again.";
+  }
+  if (error.response?.status === 403) {
+    return "Access denied. Administrator or employee permission is required.";
+  }
+
+  const data = error.response?.data;
+  const message = data?.detail || data?.error || data?.message;
+
+  if (typeof message === "string") return message;
+  if (message) return JSON.stringify(message);
+
+  return error.message || fallback;
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleDateString("en-IN");
+}
+
+function getCategoryName(spot, categories) {
+  if (spot.category && typeof spot.category === "object") {
+    return spot.category.name || `Category ${spot.category.id ?? ""}`;
+  }
+
+  const category = categories.find(
+    (item) => String(item.id) === String(spot.category)
+  );
+
+  return category?.name || "Uncategorized";
+}
 
 function StatCard({ title, value, color }) {
   return (
@@ -103,22 +53,11 @@ function StatCard({ title, value, color }) {
         <div className="card-body p-4">
           <div
             className="mb-2"
-            style={{
-              color: "#7c8b8e",
-              fontSize: "11px",
-              fontWeight: 600,
-            }}
+            style={{ color: "#7c8b8e", fontSize: "11px", fontWeight: 600 }}
           >
             {title}
           </div>
-
-          <div
-            className="fw-bold"
-            style={{
-              color,
-              fontSize: "26px",
-            }}
-          >
+          <div className="fw-bold" style={{ color, fontSize: "26px" }}>
             {value}
           </div>
         </div>
@@ -127,59 +66,33 @@ function StatCard({ title, value, color }) {
   );
 }
 
-// ============================================================
-// STATUS BADGE
-// ============================================================
-
 function StatusBadge({ status }) {
   const styles = {
-    PENDING: {
-      background: "#fff4d8",
-      color: "#a66b00",
-    },
-    APPROVED: {
-      background: "#e2f5ec",
-      color: "#16866d",
-    },
-    REJECTED: {
-      background: "#fde8e8",
-      color: "#b42335",
-    },
-    CANCELLED: {
-      background: "#eef0f2",
-      color: "#667085",
-    },
+    PENDING: { background: "#fff4d8", color: "#a66b00" },
+    APPROVED: { background: "#e2f5ec", color: "#16866d" },
+    REJECTED: { background: "#fde8e8", color: "#b42335" },
+    CANCELLED: { background: "#eef0f2", color: "#667085" },
   };
 
-  const normalizedStatus = (status || "UNKNOWN").toUpperCase();
-  const style = styles[normalizedStatus] || styles.CANCELLED;
+  const normalized = String(status || "UNKNOWN").toUpperCase();
 
   return (
     <span
       className="badge rounded-pill px-3 py-2"
       style={{
-        ...style,
+        ...(styles[normalized] || styles.CANCELLED),
         fontSize: "10px",
         fontWeight: 600,
       }}
     >
-      {normalizedStatus}
+      {normalized}
     </span>
   );
 }
 
-// ============================================================
-// ADMIN SPOTS
-// ============================================================
-
 function AdminSpots() {
-  // ============================================================
-  // STATE
-  // ============================================================
-
   const [spots, setSpots] = useState([]);
   const [categories, setCategories] = useState([]);
-
   const [loading, setLoading] = useState(true);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
@@ -195,85 +108,61 @@ function AdminSpots() {
   const [selectedSpot, setSelectedSpot] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // ============================================================
-  // FETCH SPOTS
-  // ============================================================
-
-  const fetchSpots = useCallback(async () => {
+  const fetchSpots = useCallback(async (signal) => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await apiRequest(SPOTS_API);
-      setSpots(normalizeList(data));
+      const response = await api.get("/spots/admin/spots/", { signal });
+      if (!signal?.aborted) {
+        setSpots(normalizeList(response.data));
+      }
     } catch (err) {
-      setError(err.message || "Unable to load spots.");
+      if (signal?.aborted || err.code === "ERR_CANCELED") return;
+      console.error("Failed to fetch spots:", err);
+      setError(getErrorMessage(err, "Unable to load spots."));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
-  // ============================================================
-  // FETCH CATEGORIES
-  // ============================================================
-
-  const fetchCategories = useCallback(async () => {
+  const fetchCategories = useCallback(async (signal) => {
     setCategoriesLoading(true);
     setCategoriesError("");
 
     try {
-      const data = await apiRequest(CATEGORIES_API);
-      setCategories(normalizeList(data));
+      const response = await api.get("/spots/categories/", { signal });
+      if (!signal?.aborted) {
+        setCategories(normalizeList(response.data));
+      }
     } catch (err) {
-      setCategoriesError(
-        err.message || "Unable to load categories."
-      );
+      if (signal?.aborted || err.code === "ERR_CANCELED") return;
+      console.error("Failed to fetch categories:", err);
+      setCategoriesError(getErrorMessage(err, "Unable to load categories."));
     } finally {
-      setCategoriesLoading(false);
+      if (!signal?.aborted) setCategoriesLoading(false);
     }
   }, []);
 
-  // ============================================================
-  // INITIAL DATA LOAD
-  // ============================================================
-
   useEffect(() => {
-    fetchSpots();
-    fetchCategories();
+    const controller = new AbortController();
+
+    fetchSpots(controller.signal);
+    fetchCategories(controller.signal);
+
+    return () => controller.abort();
   }, [fetchSpots, fetchCategories]);
-
-  // ============================================================
-  // GET CATEGORY NAME
-  // ============================================================
-
-  const getCategoryName = (spot) => {
-    if (typeof spot.category === "object" && spot.category !== null) {
-      return spot.category.name || `Category ${spot.category.id ?? ""}`;
-    }
-
-    const category = categories.find(
-      (item) => String(item.id) === String(spot.category)
-    );
-
-    return category?.name || "Uncategorized";
-  };
-
-  // ============================================================
-  // FILTER SPOTS
-  // ============================================================
 
   const filteredSpots = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return spots.filter((spot) => {
-      const name = String(spot.name || "").toLowerCase();
-      const description = String(spot.description || "").toLowerCase();
-      const categoryName = getCategoryName(spot).toLowerCase();
+      const categoryName = getCategoryName(spot, categories).toLowerCase();
 
       const matchesSearch =
         !query ||
-        name.includes(query) ||
-        description.includes(query) ||
+        String(spot.name || "").toLowerCase().includes(query) ||
+        String(spot.description || "").toLowerCase().includes(query) ||
         categoryName.includes(query) ||
         String(spot.id).includes(query);
 
@@ -282,7 +171,7 @@ function AdminSpots() {
         String(spot.status || "").toUpperCase() === statusFilter;
 
       const spotCategoryId =
-        typeof spot.category === "object" && spot.category !== null
+        spot.category && typeof spot.category === "object"
           ? spot.category.id
           : spot.category;
 
@@ -292,48 +181,17 @@ function AdminSpots() {
 
       return matchesSearch && matchesStatus && matchesCategory;
     });
-  }, [spots, search, statusFilter, categoryFilter, categories]);
+  }, [spots, categories, search, statusFilter, categoryFilter]);
 
-  // ============================================================
-  // SPOT STATISTICS
-  // ============================================================
-
-  const statistics = useMemo(() => {
-    return {
+  const statistics = useMemo(
+    () => ({
       total: spots.length,
-      pending: spots.filter(
-        (spot) => spot.status === "PENDING"
-      ).length,
-      approved: spots.filter(
-        (spot) => spot.status === "APPROVED"
-      ).length,
-      rejected: spots.filter(
-        (spot) => spot.status === "REJECTED"
-      ).length,
-    };
-  }, [spots]);
-
-  // ============================================================
-  // FORMAT DATE
-  // ============================================================
-
-  const formatDate = (dateValue) => {
-    if (!dateValue) {
-      return "—";
-    }
-
-    const date = new Date(dateValue);
-
-    if (Number.isNaN(date.getTime())) {
-      return "—";
-    }
-
-    return date.toLocaleDateString();
-  };
-
-  // ============================================================
-  // OPEN SPOT DETAILS
-  // ============================================================
+      pending: spots.filter((spot) => spot.status === "PENDING").length,
+      approved: spots.filter((spot) => spot.status === "APPROVED").length,
+      rejected: spots.filter((spot) => spot.status === "REJECTED").length,
+    }),
+    [spots]
+  );
 
   const handleViewSpot = (spot) => {
     setActionError("");
@@ -341,110 +199,75 @@ function AdminSpots() {
     setSelectedSpot(spot);
   };
 
-  // ============================================================
-  // UPDATE SPOT STATUS
-  // ============================================================
-
   const handleStatusUpdate = async (spot, nextStatus) => {
+    if (actionLoading) return;
+
     const confirmed = window.confirm(
       `Are you sure you want to change "${spot.name}" to ${nextStatus}?`
     );
-
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setActionLoading(true);
     setActionError("");
     setSuccessMessage("");
 
     try {
-      await apiRequest(
-        `${SPOTS_API}${spot.id}/status/`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status: nextStatus }),
-        }
-      );
-
-      setSuccessMessage(
-        `"${spot.name}" status updated to ${nextStatus}.`
-      );
+      await api.patch(`/spots/admin/spots/${spot.id}/status/`, {
+        status: nextStatus,
+      });
 
       setSelectedSpot(null);
       await fetchSpots();
+
+      setSuccessMessage(`"${spot.name}" status updated to ${nextStatus}.`);
     } catch (err) {
-      setActionError(
-        err.message || "Unable to update spot status."
-      );
+      console.error("Failed to update spot:", err);
+      setActionError(getErrorMessage(err, "Unable to update spot status."));
     } finally {
       setActionLoading(false);
     }
   };
 
-  // ============================================================
-  // DELETE SPOT
-  // ============================================================
-
   const handleDeleteSpot = async (spot) => {
+    if (actionLoading) return;
+
     const confirmed = window.confirm(
       `Delete "${spot.name}" permanently? This action cannot be undone.`
     );
-
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setActionLoading(true);
     setActionError("");
     setSuccessMessage("");
 
     try {
-      await apiRequest(`${SPOTS_API}${spot.id}/`, {
-        method: "DELETE",
-      });
+      await api.delete(`/spots/admin/spots/${spot.id}/`);
+
+      setSelectedSpot(null);
+      await fetchSpots();
 
       setSuccessMessage(`"${spot.name}" was deleted.`);
-      setSelectedSpot(null);
-
-      await fetchSpots();
     } catch (err) {
-      setActionError(
-        err.message || "Unable to delete spot."
-      );
+      console.error("Failed to delete spot:", err);
+      setActionError(getErrorMessage(err, "Unable to delete spot."));
     } finally {
       setActionLoading(false);
     }
   };
 
-  // ============================================================
-  // MAIN UI
-  // ============================================================
-
   return (
     <AdminLayout>
-      {/* ======================================================
-          PAGE HEADER
-      ======================================================= */}
-
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1
             className="fw-bold mb-1"
-            style={{
-              color: "#1d2b2e",
-              fontSize: "24px",
-            }}
+            style={{ color: "#1d2b2e", fontSize: "24px" }}
           >
             Spot Management
           </h1>
-
           <p
             className="mb-0"
-            style={{
-              color: "#7c8b8e",
-              fontSize: "13px",
-            }}
+            style={{ color: "#7c8b8e", fontSize: "13px" }}
           >
             Review and manage hidden spots submitted to NearSpot.
           </p>
@@ -453,11 +276,7 @@ function AdminSpots() {
         <button
           type="button"
           className="btn btn-light border rounded-3 px-3"
-          style={{
-            color: "#536366",
-            fontSize: "12px",
-            fontWeight: 600,
-          }}
+          style={{ color: "#536366", fontSize: "12px", fontWeight: 600 }}
           onClick={() => {
             fetchSpots();
             fetchCategories();
@@ -468,10 +287,6 @@ function AdminSpots() {
         </button>
       </div>
 
-      {/* ======================================================
-          ERROR AND SUCCESS MESSAGES
-      ======================================================= */}
-
       {error && (
         <div className="alert alert-danger rounded-3" role="alert">
           <div className="d-flex justify-content-between align-items-center gap-2">
@@ -479,7 +294,7 @@ function AdminSpots() {
             <button
               type="button"
               className="btn btn-sm btn-outline-danger"
-              onClick={fetchSpots}
+              onClick={() => fetchSpots()}
             >
               Retry
             </button>
@@ -505,29 +320,22 @@ function AdminSpots() {
         </div>
       )}
 
-      {/* ======================================================
-          SPOT STATISTICS
-      ======================================================= */}
-
       <div className="row g-3 mb-4">
         <StatCard
           title="ALL SPOTS"
           value={loading ? "..." : statistics.total}
           color="#1d2b2e"
         />
-
         <StatCard
           title="PENDING"
           value={loading ? "..." : statistics.pending}
           color="#c78318"
         />
-
         <StatCard
           title="APPROVED"
           value={loading ? "..." : statistics.approved}
           color="#16866d"
         />
-
         <StatCard
           title="REJECTED"
           value={loading ? "..." : statistics.rejected}
@@ -535,21 +343,14 @@ function AdminSpots() {
         />
       </div>
 
-      {/* ======================================================
-          FILTER AND SEARCH
-      ======================================================= */}
-
       <div className="card border-0 shadow-sm rounded-4 mb-3">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
-            {/* SEARCH */}
-
             <div className="col-12 col-lg-6">
               <div className="input-group">
                 <span className="input-group-text bg-white border-end-0">
                   ⌕
                 </span>
-
                 <input
                   type="text"
                   className="form-control border-start-0"
@@ -561,15 +362,11 @@ function AdminSpots() {
               </div>
             </div>
 
-            {/* STATUS FILTER */}
-
             <div className="col-12 col-sm-6 col-lg-3">
               <select
                 className="form-select"
                 value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value)
-                }
+                onChange={(event) => setStatusFilter(event.target.value)}
                 aria-label="Filter spots by status"
               >
                 <option value="ALL">All statuses</option>
@@ -580,19 +377,14 @@ function AdminSpots() {
               </select>
             </div>
 
-            {/* CATEGORY FILTER */}
-
             <div className="col-12 col-sm-6 col-lg-3">
               <select
                 className="form-select"
                 value={categoryFilter}
-                onChange={(event) =>
-                  setCategoryFilter(event.target.value)
-                }
+                onChange={(event) => setCategoryFilter(event.target.value)}
                 aria-label="Filter spots by category"
               >
                 <option value="ALL">All categories</option>
-
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -604,37 +396,22 @@ function AdminSpots() {
         </div>
       </div>
 
-      {/* ======================================================
-          SPOTS TABLE
-      ======================================================= */}
-
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
             <h5
               className="fw-semibold mb-1"
-              style={{
-                color: "#1d2b2e",
-                fontSize: "16px",
-              }}
+              style={{ color: "#1d2b2e", fontSize: "16px" }}
             >
               All Hidden Spots
             </h5>
-
             <p
               className="mb-0"
-              style={{
-                color: "#8a989a",
-                fontSize: "12px",
-              }}
+              style={{ color: "#8a989a", fontSize: "12px" }}
             >
               Showing {filteredSpots.length} of {spots.length} spots.
             </p>
           </div>
-
-          {/* --------------------------------------------------
-              RESPONSIVE TABLE
-          --------------------------------------------------- */}
 
           <div className="table-responsive">
             <table className="table align-middle mb-0">
@@ -660,43 +437,23 @@ function AdminSpots() {
               </thead>
 
               <tbody>
-                {loading && (
+                {loading ? (
                   <tr>
-                    <td
-                      colSpan="5"
-                      className="text-center py-5"
-                      style={{
-                        color: "#9aa6a8",
-                        fontSize: "12px",
-                      }}
-                    >
+                    <td colSpan="5" className="text-center py-5 text-muted">
                       Loading spots...
                     </td>
                   </tr>
-                )}
-
-                {!loading &&
-                  !error &&
-                  filteredSpots.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan="5"
-                        className="text-center py-5"
-                        style={{
-                          color: "#9aa6a8",
-                          fontSize: "12px",
-                        }}
-                      >
-                        No spots match your search or filters.
-                      </td>
-                    </tr>
-                  )}
-
-                {!loading &&
+                ) : filteredSpots.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="text-center py-5 text-muted">
+                      {error
+                        ? "Spots could not be loaded."
+                        : "No spots match your search or filters."}
+                    </td>
+                  </tr>
+                ) : (
                   filteredSpots.map((spot) => (
                     <tr key={spot.id}>
-                      {/* SPOT */}
-
                       <td className="px-3 py-3">
                         <div
                           className="fw-semibold"
@@ -708,20 +465,14 @@ function AdminSpots() {
                         >
                           {spot.name || `Spot #${spot.id}`}
                         </div>
-
                         <div
                           className="mt-1"
-                          style={{
-                            color: "#9aa6a8",
-                            fontSize: "11px",
-                          }}
+                          style={{ color: "#9aa6a8", fontSize: "11px" }}
                         >
                           ID: {spot.id}
                         </div>
                       </td>
 
-                      {/* CATEGORY */}
-
                       <td
                         style={{
                           color: "#667779",
@@ -729,17 +480,13 @@ function AdminSpots() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {getCategoryName(spot)}
+                        {getCategoryName(spot, categories)}
                       </td>
-
-                      {/* STATUS */}
 
                       <td>
                         <StatusBadge status={spot.status} />
                       </td>
 
-                      {/* CREATED */}
-
                       <td
                         style={{
                           color: "#667779",
@@ -747,12 +494,8 @@ function AdminSpots() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {formatDate(
-                          spot.created_at || spot.created_on
-                        )}
+                        {formatDate(spot.created_at || spot.created_on)}
                       </td>
-
-                      {/* ACTION */}
 
                       <td className="pe-3 text-end">
                         <button
@@ -764,16 +507,13 @@ function AdminSpots() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </div>
-
-      {/* ======================================================
-          SPOT DETAILS MODAL
-      ======================================================= */}
 
       {selectedSpot && (
         <div
@@ -800,14 +540,10 @@ function AdminSpots() {
                 <h5
                   className="modal-title fw-bold"
                   id="spotDetailsTitle"
-                  style={{
-                    color: "#1d2b2e",
-                    fontSize: "17px",
-                  }}
+                  style={{ color: "#1d2b2e", fontSize: "17px" }}
                 >
                   Spot Details
                 </h5>
-
                 <button
                   type="button"
                   className="btn-close"
@@ -822,117 +558,41 @@ function AdminSpots() {
 
               <div className="modal-body">
                 <div className="mb-3">
-                  <div
-                    className="mb-1"
-                    style={{
-                      color: "#8a989a",
-                      fontSize: "11px",
-                    }}
-                  >
-                    SPOT NAME
-                  </div>
-
-                  <div
-                    className="fw-semibold"
-                    style={{
-                      color: "#1d2b2e",
-                      fontSize: "15px",
-                    }}
-                  >
+                  <div className="text-muted small mb-1">SPOT NAME</div>
+                  <div className="fw-semibold">
                     {selectedSpot.name || "Unnamed spot"}
                   </div>
                 </div>
 
                 <div className="mb-3">
-                  <div
-                    className="mb-1"
-                    style={{
-                      color: "#8a989a",
-                      fontSize: "11px",
-                    }}
-                  >
-                    DESCRIPTION
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#536366",
-                      fontSize: "13px",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
+                  <div className="text-muted small mb-1">DESCRIPTION</div>
+                  <div style={{ whiteSpace: "pre-wrap" }}>
                     {selectedSpot.description || "No description provided."}
                   </div>
                 </div>
 
                 <div className="row g-3 mb-3">
                   <div className="col-6">
-                    <div
-                      className="mb-1"
-                      style={{
-                        color: "#8a989a",
-                        fontSize: "11px",
-                      }}
-                    >
-                      CATEGORY
-                    </div>
-
-                    <div
-                      style={{
-                        color: "#536366",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {getCategoryName(selectedSpot)}
-                    </div>
+                    <div className="text-muted small mb-1">CATEGORY</div>
+                    <div>{getCategoryName(selectedSpot, categories)}</div>
                   </div>
-
                   <div className="col-6">
-                    <div
-                      className="mb-1"
-                      style={{
-                        color: "#8a989a",
-                        fontSize: "11px",
-                      }}
-                    >
-                      STATUS
-                    </div>
-
+                    <div className="text-muted small mb-1">STATUS</div>
                     <StatusBadge status={selectedSpot.status} />
                   </div>
                 </div>
 
                 <div className="mb-3">
-                  <div
-                    className="mb-1"
-                    style={{
-                      color: "#8a989a",
-                      fontSize: "11px",
-                    }}
-                  >
-                    CREATED
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#536366",
-                      fontSize: "13px",
-                    }}
-                  >
+                  <div className="text-muted small mb-1">CREATED</div>
+                  <div>
                     {formatDate(
-                      selectedSpot.created_at ||
-                        selectedSpot.created_on
+                      selectedSpot.created_at || selectedSpot.created_on
                     )}
                   </div>
                 </div>
 
-                {/* ACTION ERROR */}
-
                 {actionError && (
-                  <div
-                    className="alert alert-danger py-2 mb-0"
-                    role="alert"
-                  >
+                  <div className="alert alert-danger py-2 mb-0" role="alert">
                     {actionError}
                   </div>
                 )}
@@ -993,9 +653,5 @@ function AdminSpots() {
     </AdminLayout>
   );
 }
-
-// ============================================================
-// EXPORT
-// ============================================================
 
 export default AdminSpots;

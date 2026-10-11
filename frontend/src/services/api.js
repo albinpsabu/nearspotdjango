@@ -1,3 +1,4 @@
+
 import axios from "axios";
 
 const api = axios.create({
@@ -13,12 +14,17 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token =
-      localStorage.getItem("access") ||
       localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken");
+      localStorage.getItem("access") ||
+      localStorage.getItem("accessToken") ||
+      sessionStorage.getItem("access_token") ||
+      sessionStorage.getItem("access") ||
+      sessionStorage.getItem("accessToken");
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      delete config.headers.Authorization;
     }
 
     return config;

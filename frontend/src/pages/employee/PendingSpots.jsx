@@ -1,57 +1,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import api from "../../services/api";
 import EmployeeLayout from "../../components/employee/EmployeeLayout";
-
-const API_BASE =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
-
-const PENDING_API = `${API_BASE}/spots/pending/`;
-
-function getAccessToken() {
-  return (
-    localStorage.getItem("access") ||
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("accessToken")
-  );
-}
-
-async function apiRequest(url, options = {}) {
-  const token = getAccessToken();
-
-  if (!token) {
-    throw new Error("Access token not found. Please log in again.");
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    let message = `Request failed (HTTP ${response.status}).`;
-
-    try {
-      const data = await response.json();
-      message =
-        data.detail ||
-        data.error ||
-        data.message ||
-        (typeof data === "string" ? data : message);
-    } catch {
-      // Keep the default error message.
-    }
-
-    throw new Error(message);
-  }
-
-  if (response.status === 204) return null;
-  return response.json();
-}
 
 function normalizeList(data) {
   if (Array.isArray(data)) return data;
@@ -114,6 +64,7 @@ function StatCard({ title, value, color }) {
           >
             {title}
           </div>
+
           <div
             className="fw-bold"
             style={{ color, fontSize: "26px" }}
@@ -138,15 +89,22 @@ export default function PendingSpots() {
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Fetch pending spots using the shared Axios client.
   const fetchSpots = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await apiRequest(PENDING_API);
-      setSpots(normalizeList(data));
+      const response = await api.get("/spots/pending/");
+      setSpots(normalizeList(response.data));
     } catch (err) {
-      setError(err.message || "Unable to load pending spots.");
+      setError(
+        err.response?.data?.detail ||
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          err.message ||
+          "Unable to load pending spots."
+      );
     } finally {
       setLoading(false);
     }
@@ -182,6 +140,7 @@ export default function PendingSpots() {
     setRejectionReason("");
   };
 
+  // Approve the selected spot.
   const handleApprove = async () => {
     if (!selectedSpot) return;
 
@@ -196,24 +155,32 @@ export default function PendingSpots() {
     setSuccessMessage("");
 
     try {
-      const spotName = selectedSpot.name || `Spot #${selectedSpot.id}`;
+      const spotName =
+        selectedSpot.name || `Spot #${selectedSpot.id}`;
 
-      await apiRequest(
-        `${API_BASE}/spots/${selectedSpot.id}/approve/`,
-        { method: "POST" }
+      await api.post(`/spots/${selectedSpot.id}/approve/`);
+
+      setSuccessMessage(
+        `"${spotName}" was approved successfully.`
       );
-
-      setSuccessMessage(`"${spotName}" was approved successfully.`);
       setSelectedSpot(null);
       setShowRejectForm(false);
+
       await fetchSpots();
     } catch (err) {
-      setActionError(err.message || "Unable to approve this spot.");
+      setActionError(
+        err.response?.data?.detail ||
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          err.message ||
+          "Unable to approve this spot."
+      );
     } finally {
       setActionLoading(false);
     }
   };
 
+  // Reject the selected spot with a reason.
   const handleReject = async (event) => {
     event.preventDefault();
 
@@ -222,7 +189,9 @@ export default function PendingSpots() {
     const reason = rejectionReason.trim();
 
     if (!reason) {
-      setActionError("Please enter a reason for rejecting this spot.");
+      setActionError(
+        "Please enter a reason for rejecting this spot."
+      );
       return;
     }
 
@@ -237,23 +206,30 @@ export default function PendingSpots() {
     setSuccessMessage("");
 
     try {
-      const spotName = selectedSpot.name || `Spot #${selectedSpot.id}`;
+      const spotName =
+        selectedSpot.name || `Spot #${selectedSpot.id}`;
 
-      await apiRequest(
-        `${API_BASE}/spots/${selectedSpot.id}/reject/`,
-        {
-          method: "POST",
-          body: JSON.stringify({ reason }),
-        }
+      await api.post(
+        `/spots/${selectedSpot.id}/reject/`,
+        { reason }
       );
 
-      setSuccessMessage(`"${spotName}" was rejected successfully.`);
+      setSuccessMessage(
+        `"${spotName}" was rejected successfully.`
+      );
       setSelectedSpot(null);
       setShowRejectForm(false);
       setRejectionReason("");
+
       await fetchSpots();
     } catch (err) {
-      setActionError(err.message || "Unable to reject this spot.");
+      setActionError(
+        err.response?.data?.detail ||
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          err.message ||
+          "Unable to reject this spot."
+      );
     } finally {
       setActionLoading(false);
     }
@@ -269,6 +245,7 @@ export default function PendingSpots() {
           >
             Pending Spots
           </h1>
+
           <p
             className="mb-0"
             style={{ color: "#7c8b8e", fontSize: "13px" }}
@@ -289,9 +266,13 @@ export default function PendingSpots() {
       </div>
 
       {error && (
-        <div className="alert alert-danger rounded-3" role="alert">
+        <div
+          className="alert alert-danger rounded-3"
+          role="alert"
+        >
           <div className="d-flex justify-content-between gap-2 align-items-center">
             <span>{error}</span>
+
             <button
               className="btn btn-sm btn-outline-danger"
               onClick={fetchSpots}
@@ -304,13 +285,19 @@ export default function PendingSpots() {
       )}
 
       {actionError && !selectedSpot && (
-        <div className="alert alert-danger rounded-3" role="alert">
+        <div
+          className="alert alert-danger rounded-3"
+          role="alert"
+        >
           {actionError}
         </div>
       )}
 
       {successMessage && (
-        <div className="alert alert-success rounded-3" role="status">
+        <div
+          className="alert alert-success rounded-3"
+          role="status"
+        >
           {successMessage}
         </div>
       )}
@@ -321,6 +308,7 @@ export default function PendingSpots() {
           value={loading ? "..." : spots.length}
           color="#c78318"
         />
+
         <StatCard
           title="MATCHING RESULTS"
           value={loading ? "..." : filteredSpots.length}
@@ -349,6 +337,7 @@ export default function PendingSpots() {
           >
             Spots awaiting review
           </h2>
+
           <p
             className="mb-0"
             style={{ color: "#8a989a", fontSize: "12px" }}
@@ -363,47 +352,59 @@ export default function PendingSpots() {
           <table className="table align-middle mb-0">
             <thead>
               <tr>
-                {["SPOT", "CATEGORY", "SUBMITTED", "STATUS", "ACTION"].map(
-                  (heading) => (
-                    <th
-                      key={heading}
-                      className="px-3 py-3"
-                      style={{
-                        color: "#7c8b8e",
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {heading}
-                    </th>
-                  )
-                )}
+                {[
+                  "SPOT",
+                  "CATEGORY",
+                  "SUBMITTED",
+                  "STATUS",
+                  "ACTION",
+                ].map((heading) => (
+                  <th
+                    key={heading}
+                    className="px-3 py-3"
+                    style={{
+                      color: "#7c8b8e",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {heading}
+                  </th>
+                ))}
               </tr>
             </thead>
 
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan="5" className="text-center py-5">
+                  <td
+                    colSpan="5"
+                    className="text-center py-5"
+                  >
                     Loading pending spots...
                   </td>
                 </tr>
               )}
 
-              {!loading && !error && filteredSpots.length === 0 && (
-                <tr>
-                  <td
-                    colSpan="5"
-                    className="text-center py-5"
-                    style={{ color: "#8a989a", fontSize: "13px" }}
-                  >
-                    {spots.length === 0
-                      ? "There are no pending spots to review."
-                      : "No spots match your search."}
-                  </td>
-                </tr>
-              )}
+              {!loading &&
+                !error &&
+                filteredSpots.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan="5"
+                      className="text-center py-5"
+                      style={{
+                        color: "#8a989a",
+                        fontSize: "13px",
+                      }}
+                    >
+                      {spots.length === 0
+                        ? "There are no pending spots to review."
+                        : "No spots match your search."}
+                    </td>
+                  </tr>
+                )}
 
               {!loading &&
                 filteredSpots.map((spot) => (
@@ -419,9 +420,13 @@ export default function PendingSpots() {
                       >
                         {spot.name || `Spot #${spot.id}`}
                       </div>
+
                       <div
                         className="mt-1"
-                        style={{ color: "#9aa6a8", fontSize: "11px" }}
+                        style={{
+                          color: "#9aa6a8",
+                          fontSize: "11px",
+                        }}
                       >
                         ID: {spot.id}
                       </div>
@@ -444,11 +449,15 @@ export default function PendingSpots() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {formatDate(spot.created_at || spot.created_on)}
+                      {formatDate(
+                        spot.created_at || spot.created_on
+                      )}
                     </td>
 
                     <td>
-                      <StatusBadge status={spot.status || "PENDING"} />
+                      <StatusBadge
+                        status={spot.status || "PENDING"}
+                      />
                     </td>
 
                     <td className="pe-3">
@@ -500,11 +509,20 @@ export default function PendingSpots() {
                   <h2
                     className="modal-title fw-bold mb-1"
                     id="pendingSpotTitle"
-                    style={{ color: "#1d2b2e", fontSize: "17px" }}
+                    style={{
+                      color: "#1d2b2e",
+                      fontSize: "17px",
+                    }}
                   >
                     Review spot
                   </h2>
-                  <span style={{ color: "#8a989a", fontSize: "12px" }}>
+
+                  <span
+                    style={{
+                      color: "#8a989a",
+                      fontSize: "12px",
+                    }}
+                  >
                     Submission ID: {selectedSpot.id}
                   </span>
                 </div>
@@ -520,8 +538,14 @@ export default function PendingSpots() {
 
               <div className="modal-body">
                 <div className="mb-3">
-                  <div className="small text-secondary mb-1">SPOT NAME</div>
-                  <div className="fw-semibold" style={{ color: "#1d2b2e" }}>
+                  <div className="small text-secondary mb-1">
+                    SPOT NAME
+                  </div>
+
+                  <div
+                    className="fw-semibold"
+                    style={{ color: "#1d2b2e" }}
+                  >
                     {selectedSpot.name || "Unnamed spot"}
                   </div>
                 </div>
@@ -530,6 +554,7 @@ export default function PendingSpots() {
                   <div className="small text-secondary mb-1">
                     DESCRIPTION
                   </div>
+
                   <div
                     style={{
                       color: "#536366",
@@ -537,32 +562,65 @@ export default function PendingSpots() {
                       whiteSpace: "pre-wrap",
                     }}
                   >
-                    {selectedSpot.description || "No description provided."}
+                    {selectedSpot.description ||
+                      "No description provided."}
                   </div>
                 </div>
 
                 <div className="row g-3 mb-3">
                   <div className="col-6">
-                    <div className="small text-secondary mb-1">CATEGORY</div>
-                    <div style={{ color: "#536366", fontSize: "13px" }}>
+                    <div className="small text-secondary mb-1">
+                      CATEGORY
+                    </div>
+
+                    <div
+                      style={{
+                        color: "#536366",
+                        fontSize: "13px",
+                      }}
+                    >
                       {getCategoryName(selectedSpot)}
                     </div>
                   </div>
+
                   <div className="col-6">
-                    <div className="small text-secondary mb-1">STATUS</div>
-                    <StatusBadge status={selectedSpot.status || "PENDING"} />
+                    <div className="small text-secondary mb-1">
+                      STATUS
+                    </div>
+
+                    <StatusBadge
+                      status={selectedSpot.status || "PENDING"}
+                    />
                   </div>
+
                   <div className="col-6">
-                    <div className="small text-secondary mb-1">LATITUDE</div>
-                    <div style={{ color: "#536366", fontSize: "13px" }}>
+                    <div className="small text-secondary mb-1">
+                      LATITUDE
+                    </div>
+
+                    <div
+                      style={{
+                        color: "#536366",
+                        fontSize: "13px",
+                      }}
+                    >
                       {selectedSpot.latitude ??
                         selectedSpot.location?.coordinates?.[1] ??
                         "—"}
                     </div>
                   </div>
+
                   <div className="col-6">
-                    <div className="small text-secondary mb-1">LONGITUDE</div>
-                    <div style={{ color: "#536366", fontSize: "13px" }}>
+                    <div className="small text-secondary mb-1">
+                      LONGITUDE
+                    </div>
+
+                    <div
+                      style={{
+                        color: "#536366",
+                        fontSize: "13px",
+                      }}
+                    >
                       {selectedSpot.longitude ??
                         selectedSpot.location?.coordinates?.[0] ??
                         "—"}
@@ -571,16 +629,28 @@ export default function PendingSpots() {
                 </div>
 
                 <div className="mb-3">
-                  <div className="small text-secondary mb-1">SUBMITTED</div>
-                  <div style={{ color: "#536366", fontSize: "13px" }}>
+                  <div className="small text-secondary mb-1">
+                    SUBMITTED
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#536366",
+                      fontSize: "13px",
+                    }}
+                  >
                     {formatDate(
-                      selectedSpot.created_at || selectedSpot.created_on
+                      selectedSpot.created_at ||
+                        selectedSpot.created_on
                     )}
                   </div>
                 </div>
 
                 {actionError && (
-                  <div className="alert alert-danger py-2" role="alert">
+                  <div
+                    className="alert alert-danger py-2"
+                    role="alert"
+                  >
                     {actionError}
                   </div>
                 )}
@@ -593,6 +663,7 @@ export default function PendingSpots() {
                     >
                       Reason for rejection
                     </label>
+
                     <textarea
                       id="rejectionReason"
                       className="form-control mb-2"
@@ -606,13 +677,19 @@ export default function PendingSpots() {
                       placeholder="Explain why this spot cannot be approved..."
                       disabled={actionLoading}
                     />
+
                     <div className="d-flex justify-content-end">
                       <button
                         type="submit"
                         className="btn btn-danger rounded-3"
-                        disabled={actionLoading || !rejectionReason.trim()}
+                        disabled={
+                          actionLoading ||
+                          !rejectionReason.trim()
+                        }
                       >
-                        {actionLoading ? "Rejecting..." : "Confirm rejection"}
+                        {actionLoading
+                          ? "Rejecting..."
+                          : "Confirm rejection"}
                       </button>
                     </div>
                   </form>
@@ -649,7 +726,9 @@ export default function PendingSpots() {
                       disabled={actionLoading}
                       onClick={handleApprove}
                     >
-                      {actionLoading ? "Approving..." : "Approve"}
+                      {actionLoading
+                        ? "Approving..."
+                        : "Approve"}
                     </button>
                   </>
                 )}

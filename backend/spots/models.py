@@ -232,3 +232,89 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.action} - {self.user}"
+
+
+
+# Need to add to spots/models.py
+# Add to backend/spots/models.py
+
+class Review(models.Model):
+    class Rating(models.IntegerChoices):
+        ONE = 1, "1"
+        TWO = 2, "2"
+        THREE = 3, "3"
+        FOUR = 4, "4"
+        FIVE = 5, "5"
+
+    spot = models.ForeignKey(
+        HiddenSpot,
+        on_delete=models.CASCADE,
+        related_name="reviews"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reviews"
+    )
+    rating = models.IntegerField(choices=Rating.choices)
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["spot", "user"],
+                name="unique_review_per_user_per_spot"
+            )
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.spot.name} - {self.rating}/5"
+
+
+class SavedSpot(models.Model):
+    spot = models.ForeignKey(
+        HiddenSpot,
+        on_delete=models.CASCADE,
+        related_name="saved_by_users"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_spots"
+    )
+    saved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["spot", "user"],
+                name="unique_saved_spot_per_user"
+            )
+        ]
+        ordering = ["-saved_at"]
+
+    def __str__(self):
+        return f"{self.user.email} saved {self.spot.name}"
+
+
+
+
+class ReviewMedia(models.Model):
+    class MediaType(models.TextChoices):
+        IMAGE = "IMAGE", "Image"
+        VIDEO = "VIDEO", "Video"
+
+    review = models.ForeignKey(
+        Review,
+        on_delete=models.CASCADE,
+        related_name="media"
+    )
+    file = models.FileField(upload_to="reviews/")
+    media_type = models.CharField(max_length=10, choices=MediaType.choices)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Review {self.review.id} - {self.media_type}"
