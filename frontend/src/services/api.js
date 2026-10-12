@@ -5,12 +5,13 @@ const api = axios.create({
   baseURL:
     import.meta.env.VITE_API_URL ||
     "http://127.0.0.1:8000/api",
+
   headers: {
-    "Content-Type": "application/json",
     Accept: "application/json",
   },
 });
 
+// Attach JWT access token to authenticated requests.
 api.interceptors.request.use(
   (config) => {
     const token =
@@ -25,6 +26,11 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     } else {
       delete config.headers.Authorization;
+    }
+
+    // Let Axios/browser set multipart boundaries for FormData.
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
     }
 
     return config;

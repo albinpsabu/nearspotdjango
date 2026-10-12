@@ -1,4 +1,3 @@
-
 // ============================================================
 // IMPORTS
 // ============================================================
@@ -8,6 +7,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "../App";
 import SpotDetails from "../pages/public/SpotDetails";
 import Login from "../pages/auth/Login";
+
+import ProtectedRoute from "../components/auth/ProtectedRoute";
 
 // Admin pages
 import AdminDashboard from "../pages/admin/AdminDashboard";
@@ -53,29 +54,37 @@ function AppRoutes() {
             ADMIN ROUTES
         ===================================================== */}
 
-        <Route path="/admin" element={<AdminDashboard />} />
+        <Route
+          element={<ProtectedRoute allowedRoles={["ADMIN"]} />}
+        >
+          <Route path="/admin" element={<AdminDashboard />} />
 
-        <Route path="/admin/spots" element={<AdminSpots />} />
+          <Route path="/admin/spots" element={<AdminSpots />} />
 
-        <Route path="/admin/users" element={<AdminUsers />} />
+          <Route path="/admin/users" element={<AdminUsers />} />
 
-        <Route path="/admin/employees" element={<AdminEmployees />} />
+          <Route path="/admin/employees" element={<AdminEmployees />} />
 
-        <Route path="/admin/categories" element={<AdminCategories />} />
+          <Route path="/admin/categories" element={<AdminCategories />} />
 
-        <Route path="/admin/reports" element={<AdminReports />} />
+          <Route path="/admin/reports" element={<AdminReports />} />
+        </Route>
 
         {/* ====================================================
             EMPLOYEE ROUTES
         ===================================================== */}
 
-        <Route path="/employee" element={<EmployeeDashboard />} />
+        <Route
+          element={<ProtectedRoute allowedRoles={["EMPLOYEE"]} />}
+        >
+          <Route path="/employee" element={<EmployeeDashboard />} />
 
-        <Route path="/employee/spots" element={<PendingSpots />} />
+          <Route path="/employee/spots" element={<PendingSpots />} />
 
-        <Route path="/employee/reports" element={<Reports />} />
+          <Route path="/employee/reports" element={<Reports />} />
 
-        <Route path="/employee/profile" element={<Profile />} />
+          <Route path="/employee/profile" element={<Profile />} />
+        </Route>
 
         {/* ====================================================
             USER ROUTES
@@ -83,16 +92,20 @@ function AppRoutes() {
             Child pages render inside its Outlet.
         ===================================================== */}
 
-        <Route path="/user" element={<UserLayout />}>
-          <Route index element={<UserDashboard />} />
+        <Route
+          element={<ProtectedRoute allowedRoles={["USER"]} />}
+        >
+          <Route path="/user" element={<UserLayout />}>
+            <Route index element={<UserDashboard />} />
 
-          <Route path="profile" element={<UserProfile />} />
+            <Route path="profile" element={<UserProfile />} />
 
-          <Route path="submissions" element={<MySubmissions />} />
+            <Route path="submissions" element={<MySubmissions />} />
 
-          <Route path="reviews" element={<MyReviews />} />
+            <Route path="reviews" element={<MyReviews />} />
 
-          <Route path="saved" element={<SavedSpots />} />
+            <Route path="saved" element={<SavedSpots />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

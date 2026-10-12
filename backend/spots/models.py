@@ -318,3 +318,199 @@ class ReviewMedia(models.Model):
 
     def __str__(self):
         return f"Review {self.review.id} - {self.media_type}"
+
+
+
+
+
+
+
+
+
+
+# ============================================================
+# EXTERNAL MAP PLACES
+# ============================================================
+# Places imported from OpenStreetMap.
+# These are separate from user-submitted HiddenSpot records.
+
+
+class ExternalPlace(models.Model):
+
+    # OpenStreetMap identifies features as nodes, ways,
+    # or relations. The ID is unique within each type.
+    class OSMType(models.TextChoices):
+        NODE = "node", "Node"
+        WAY = "way", "Way"
+        RELATION = "relation", "Relation"
+
+    osm_type = models.CharField(
+        max_length=10,
+        choices=OSMType.choices
+    )
+
+    osm_id = models.BigIntegerField()
+
+    name = models.CharField(max_length=255)
+
+    category = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    address = models.TextField(blank=True)
+
+    # Store the geographic location using GeoDjango.
+    location = gis_models.PointField(
+        geography=True,
+        srid=4326
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # Prevent duplicate records for the same OSM place.
+            models.UniqueConstraint(
+                fields=["osm_type", "osm_id"],
+                name="unique_external_osm_place"
+            )
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+# ============================================================
+# SAVED EXTERNAL PLACES
+# ============================================================
+# Each user can bookmark an external place only once.
+
+
+class SavedExternalPlace(models.Model):
+
+    place = models.ForeignKey(
+        ExternalPlace,
+        on_delete=models.CASCADE,
+        related_name="saved_by_users"
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_external_places"
+    )
+
+    saved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["place", "user"],
+                name="unique_saved_external_place_per_user"
+            )
+        ]
+        ordering = ["-saved_at"]
+
+    def __str__(self):
+        return f"{self.user.email} saved {self.place.name}"
+
+
+# ============================================================
+# EXTERNAL PLACE REVIEWS
+# ============================================================
+# NearSpot users can rate and review recognized map places.
+# These reviews are stored in NearSpot, not OpenStreetMap.
+
+
+class ExternalPlaceReview(models.Model):
+
+    place = models.ForeignKey(
+        ExternalPlace,
+        on_delete=models.CASCADE,
+        related_name="reviews"
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="external_place_reviews"
+    )
+
+    # Ratings must be between 1 and 5.
+    rating = models.PositiveSmallIntegerField(
+        choices=Review.Rating.choices
+    )
+
+    comment = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # One review per user per external place.
+            models.UniqueConstraint(
+                fields=["place", "user"],
+                name="unique_external_place_review_per_user"
+            ),
+
+            # Enforce the valid rating range in the database.
+            models.CheckConstraint(
+                condition=models.Q(rating__gte=1, rating__lte=5),
+                name="external_place_rating_1_to_5"
+            )
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"{self.user.email} - "
+            f"{self.place.name} - {self.rating}/5"
+        )
+
+
+
+
+
+
+
+
+# ============================================================
+# OSM DISCOVERY AREA CACHE
+# ============================================================
+
+class OSMDiscoveryArea(models.Model):
+    """
+    Tracks geographic areas already fetched from OpenStreetMap.
+
+    This allows NearSpot to reuse previously discovered
+    places instead of repeatedly requesting Overpass.
+    """
+
+    south = models.FloatField()
+    west = models.FloatField()
+    north = models.FloatField()
+    east = models.FloatField()
+
+    # Stores normalized OSM place data for this area.
+    places = models.JSONField(default=list)
+
+    # Indicates when the cached area was fetched.
+    fetched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["south", "west", "north", "east"]
+            ),
+            models.Index(fields=["fetched_at"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"OSM Area: "
+            f"{self.south}, {self.west} → "
+            f"{self.north}, {self.east}"
+        )

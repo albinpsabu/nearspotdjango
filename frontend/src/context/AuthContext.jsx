@@ -10,6 +10,10 @@ import api from "../services/api";
 
 const AuthContext = createContext(null);
 
+// ============================================================
+// GET STORED ACCESS TOKEN
+// ============================================================
+
 function getStoredToken() {
   return (
     localStorage.getItem("access_token") ||
@@ -17,12 +21,19 @@ function getStoredToken() {
   );
 }
 
+// ============================================================
+// AUTH PROVIDER
+// ============================================================
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(getStoredToken);
   const [loading, setLoading] = useState(true);
 
-  // Fetch the currently authenticated user.
+  // ============================================================
+  // FETCH CURRENT USER
+  // ============================================================
+
   const fetchCurrentUser = async (token = accessToken) => {
     if (!token) {
       setUser(null);
@@ -38,12 +49,14 @@ export function AuthProvider({ children }) {
       });
 
       setUser(response.data);
+
       return response.data;
     } catch (error) {
       console.error("Failed to fetch current user:", error);
 
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
+
       sessionStorage.removeItem("access_token");
       sessionStorage.removeItem("refresh_token");
 
@@ -56,7 +69,10 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Restore an existing session on app startup.
+  // ============================================================
+  // RESTORE EXISTING SESSION
+  // ============================================================
+
   useEffect(() => {
     if (accessToken) {
       fetchCurrentUser(accessToken);
@@ -68,7 +84,10 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Login with persistent or session-only storage.
+  // ============================================================
+  // LOGIN
+  // ============================================================
+
   const login = async (email, password, rememberMe = false) => {
     const response = await api.post("/accounts/login/", {
       email: email.trim(),
@@ -86,10 +105,11 @@ export function AuthProvider({ children }) {
     // Clear previous tokens from both storage locations.
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+
     sessionStorage.removeItem("access_token");
     sessionStorage.removeItem("refresh_token");
 
-    // Save tokens according to the Remember me selection.
+    // Store tokens based on Remember me.
     const storage = rememberMe ? localStorage : sessionStorage;
 
     storage.setItem("access_token", access);
@@ -97,7 +117,7 @@ export function AuthProvider({ children }) {
 
     setAccessToken(access);
 
-    // Load the user's profile.
+    // Fetch user details after successful login.
     const currentUser = await fetchCurrentUser(access);
 
     if (!currentUser) {
@@ -109,10 +129,28 @@ export function AuthProvider({ children }) {
     return currentUser;
   };
 
-  // Logout.
+  // ============================================================
+  // REGISTER NEW USER
+  // ============================================================
+
+  const register = async (name, email, password) => {
+    const response = await api.post("/accounts/register/", {
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    return response.data;
+  };
+
+  // ============================================================
+  // LOGOUT
+  // ============================================================
+
   const logout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+
     sessionStorage.removeItem("access_token");
     sessionStorage.removeItem("refresh_token");
 
@@ -120,13 +158,18 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  // Make authentication functions available to components.
+  // ============================================================
+  // AUTH CONTEXT VALUES
+  // ============================================================
+
   const value = {
     user,
     accessToken,
     loading,
     isAuthenticated: Boolean(accessToken && user),
+
     login,
+    register,
     logout,
     fetchCurrentUser,
   };
@@ -137,6 +180,10 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
+
+// ============================================================
+// CUSTOM AUTH HOOK
+// ============================================================
 
 export function useAuth() {
   const context = useContext(AuthContext);

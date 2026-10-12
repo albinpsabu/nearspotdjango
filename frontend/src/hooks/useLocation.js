@@ -1,58 +1,104 @@
-import { useState } from "react";
+
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function useLocation() {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const getCurrentLocation = () => {
+  const mountedRef = useRef(true);
+  const pendingRequestRef = useRef(null);
+
+  // Ignore geolocation callbacks after unmounting.
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const getCurrentLocation = useCallback(() => {
+    // Reuse an ongoing request instead of starting another.
+    if (pendingRequestRef.current) {
+      return pendingRequestRef.current;
+    }
+
     if (!navigator.geolocation) {
-      setError("Geolocation is not supported by this browser.");
-      return;
+      const message = "Geolocation is not supported by this browser.";
+
+      setError(message);
+      return Promise.resolve(null);
     }
 
     setLoading(true);
     setError("");
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude, accuracy } = position.coords;
+    const request = new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, accuracy } = position.coords;
 
-        setLocation({
-          latitude,
-          longitude,
-          accuracy,
-        });
+          const coordinates = {
+            latitude,
+            longitude,
+            accuracy,
+          };
 
-        setLoading(false);
-      },
-      (error) => {
-        setLoading(false);
+          if (mountedRef.current) {
+            setLocation(coordinates);
+            setLoading(false);
+          }
 
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            setError("Location permission was denied.");
-            break;
+          resolve(coordinates);
+        },
 
-          case error.POSITION_UNAVAILABLE:
-            setError("Location information is unavailable.");
-            break;
+        (geoError) => {
+          let message;
 
-          case error.TIMEOUT:
-            setError("Location request timed out.");
-            break;
+          switch (geoError.code) {
+            case 1:
+              message = "Location permission was denied.";
+              break;
 
-          default:
-            setError("Unable to get your location.");
+            case 2:
+              message = "Location information is unavailable.";
+              break;
+
+            case 3:
+              message = "Location request timed out.";
+              break;
+
+            default:
+              message = "Unable to get your location.";
+          }
+
+          if (mountedRef.current) {
+            setError(message);
+            setLoading(false);
+          }
+
+          resolve(null);
+        },
+
+        {
+          enableHighAccuracy: true,
+          timeout: 30000,
+          maximumAge: 10000,
         }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 10000,
+      );
+    });
+
+    pendingRequestRef.current = request;
+
+    request.finally(() => {
+      if (pendingRequestRef.current === request) {
+        pendingRequestRef.current = null;
       }
-    );
-  };
+    });
+
+    return request;
+  }, []);
 
   return {
     location,
