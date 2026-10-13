@@ -1,9 +1,10 @@
+
 import { useNavigate } from "react-router-dom";
 
 // ============================================================
 // NEARBY SPOT LIST
 // ============================================================
-// Displays nearby spots with images and details
+// Displays nearby spots with images and details.
 // ============================================================
 
 function NearbySpotList({ spots }) {
@@ -26,6 +27,28 @@ function NearbySpotList({ spots }) {
   };
 
   // ============================================================
+  // RESOLVE MEDIA URL
+  // ============================================================
+
+  const getMediaUrl = (fileUrl) => {
+    if (!fileUrl || typeof fileUrl !== "string") {
+      return null;
+    }
+
+    // Django may return an absolute or relative URL.
+    const apiBase =
+      import.meta.env.VITE_API_URL ||
+      "http://127.0.0.1:8000/api";
+
+    const backendOrigin = new URL(
+      apiBase,
+      window.location.origin
+    ).origin;
+
+    return new URL(fileUrl, `${backendOrigin}/`).href;
+  };
+
+  // ============================================================
   // GET SPOT IMAGE
   // ============================================================
   // Backend structure:
@@ -41,19 +64,37 @@ function NearbySpotList({ spots }) {
   // ============================================================
 
   const getSpotImage = (spot) => {
-    if (
-      !spot.media ||
-      !Array.isArray(spot.media) ||
-      spot.media.length === 0
-    ) {
+    if (!Array.isArray(spot.media)) {
       return null;
     }
 
+    // Find the first uploaded image, ignoring videos.
     const imageMedia = spot.media.find(
-      (media) => media.media_type === "IMAGE"
+      (media) =>
+        media.media_type?.toUpperCase() === "IMAGE"
     );
 
-    return imageMedia?.url || null;
+    const fileUrl =
+      imageMedia?.url ||
+      imageMedia?.file ||
+      imageMedia?.file_url;
+
+    return getMediaUrl(fileUrl);
+  };
+
+  // ============================================================
+  // COUNT SPOT IMAGES
+  // ============================================================
+
+  const getImageCount = (spot) => {
+    if (!Array.isArray(spot.media)) {
+      return 0;
+    }
+
+    return spot.media.filter(
+      (media) =>
+        media.media_type?.toUpperCase() === "IMAGE"
+    ).length;
   };
 
   // ============================================================
@@ -130,7 +171,7 @@ function NearbySpotList({ spots }) {
     >
       {/* ======================================================
           HEADER
-      ======================================================= */}
+      ====================================================== */}
 
       <div
         style={{
@@ -164,7 +205,7 @@ function NearbySpotList({ spots }) {
 
       {/* ======================================================
           SCROLLABLE SPOT LIST
-      ======================================================= */}
+      ====================================================== */}
 
       <div
         style={{
@@ -174,6 +215,7 @@ function NearbySpotList({ spots }) {
       >
         {spots.map((spot) => {
           const imageUrl = getSpotImage(spot);
+          const imageCount = getImageCount(spot);
 
           return (
             <div
@@ -193,6 +235,7 @@ function NearbySpotList({ spots }) {
                 <img
                   src={imageUrl}
                   alt={spot.name}
+                  loading="lazy"
                   style={{
                     width: "100%",
                     height: "150px",
@@ -317,10 +360,10 @@ function NearbySpotList({ spots }) {
                 )}
 
                 {/* ==================================================
-                    MEDIA COUNT
+                    IMAGE COUNT
                 ================================================== */}
 
-                {spot.media && spot.media.length > 0 && (
+                {imageCount > 0 && (
                   <div
                     style={{
                       marginTop: "8px",
@@ -329,10 +372,8 @@ function NearbySpotList({ spots }) {
                       fontWeight: 600,
                     }}
                   >
-                    {spot.media.length}{" "}
-                    {spot.media.length === 1
-                      ? "image"
-                      : "images"}
+                    {imageCount}{" "}
+                    {imageCount === 1 ? "image" : "images"}
                   </div>
                 )}
 

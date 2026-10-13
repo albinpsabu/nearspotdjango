@@ -27,6 +27,13 @@ const DEFAULT_LOCATION = {
 };
 
 const LOCATION_FALLBACK_DELAY = 2500;
+const RECENT_SEARCHES_KEY = "nearspot_recent_searches";
+
+// Reduced from 104px to 80px.
+const TOP_BAR_HEIGHT = 80;
+
+const SIDEBAR_COLLAPSED_WIDTH = 76;
+const SIDEBAR_EXPANDED_WIDTH = 320;
 
 // ============================================================
 // HELPERS
@@ -59,6 +66,23 @@ function getApiErrorMessage(error) {
       .join(" | ") ||
     "Unable to complete the request."
   );
+}
+
+function loadRecentSearches() {
+  try {
+    const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed = JSON.parse(saved);
+
+    return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+  } catch (error) {
+    console.warn("Unable to load recent searches:", error);
+    return [];
+  }
 }
 
 // ============================================================
@@ -126,7 +150,7 @@ function App() {
   }, []);
 
   // ============================================================
-  // HIDDENSPOT CREATION STATE
+  // HIDDENSPOT CREATION
   // ============================================================
 
   const [isSelectingSpot, setIsSelectingSpot] = useState(false);
@@ -135,17 +159,13 @@ function App() {
     useState(null);
 
   const [showSpotForm, setShowSpotForm] = useState(false);
-
   const [spotCategories, setSpotCategories] = useState([]);
+
   const [categoriesLoading, setCategoriesLoading] =
     useState(false);
+
   const [categoriesError, setCategoriesError] = useState("");
-
   const [submittingSpot, setSubmittingSpot] = useState(false);
-
-  // ============================================================
-  // START HIDDENSPOT CREATION
-  // ============================================================
 
   const startAddSpot = useCallback(() => {
     setSelectedSpotLocation(null);
@@ -181,10 +201,6 @@ function App() {
     startAddSpot();
   };
 
-  // ============================================================
-  // AUTHENTICATION SUCCESS
-  // ============================================================
-
   const handleAuthSuccess = (currentUser) => {
     const action = pendingAction;
 
@@ -203,10 +219,6 @@ function App() {
     }
   };
 
-  // ============================================================
-  // CONFIRM LOCATION
-  // ============================================================
-
   const handleConfirmSpotLocation = () => {
     if (!selectedSpotLocation) return;
 
@@ -214,10 +226,6 @@ function App() {
     setShowSpotForm(true);
     setActionMessage("");
   };
-
-  // ============================================================
-  // FORM NAVIGATION
-  // ============================================================
 
   const handleSpotFormBack = () => {
     if (submittingSpot) return;
@@ -237,7 +245,7 @@ function App() {
   };
 
   // ============================================================
-  // LOAD CATEGORIES FROM DJANGO
+  // LOAD CATEGORIES
   // ============================================================
 
   useEffect(() => {
@@ -279,7 +287,7 @@ function App() {
   }, [showSpotForm]);
 
   // ============================================================
-  // SUBMIT HIDDENSPOT TO DJANGO
+  // SUBMIT HIDDENSPOT
   // ============================================================
 
   const handleSpotFormSubmit = async (formData) => {
@@ -300,7 +308,6 @@ function App() {
       const { spot, failedImages } =
         await submitHiddenSpot(formData);
 
-      // Spot was created successfully in Django.
       setShowSpotForm(false);
       setIsSelectingSpot(false);
       setSelectedSpotLocation(null);
@@ -320,7 +327,6 @@ function App() {
       }
     } catch (error) {
       console.error("HiddenSpot submission failed:", error);
-
       showMessage(getApiErrorMessage(error), "danger");
     } finally {
       setSubmittingSpot(false);
@@ -361,6 +367,7 @@ function App() {
 
   const [radius, setRadius] = useState(5000);
   const [mapLocation, setMapLocation] = useState(null);
+
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(false);
 
@@ -373,7 +380,28 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [recentSearches, setRecentSearches] = useState([]);
+
+  const [recentSearches, setRecentSearches] =
+    useState(loadRecentSearches);
+
+  // Save recent searches across refreshes.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        RECENT_SEARCHES_KEY,
+        JSON.stringify(recentSearches)
+      );
+    } catch (error) {
+      console.warn("Unable to save recent searches:", error);
+    }
+  }, [recentSearches]);
+
+  // Remove an individual recent search.
+  const handleRecentSearchRemove = useCallback((searchId) => {
+    setRecentSearches((previous) =>
+      previous.filter((item) => item.id !== searchId)
+    );
+  }, []);
 
   // ============================================================
   // NEARBY SPOTS
@@ -444,7 +472,6 @@ function App() {
       const coordinates = { latitude, longitude };
 
       hasSelectedPlaceRef.current = true;
-
       setMapLocation(coordinates);
 
       if (isSelectingSpot) {
@@ -491,7 +518,6 @@ function App() {
       }
 
       hasSelectedPlaceRef.current = true;
-
       setMapLocation(coordinates);
 
       if (isSelectingSpot) {
@@ -579,6 +605,11 @@ function App() {
     }
   };
 
+  // Keep search aligned with sidebar collapse/expand.
+  const sidebarWidth = sidebarCollapsed
+    ? SIDEBAR_COLLAPSED_WIDTH
+    : SIDEBAR_EXPANDED_WIDTH;
+
   // ============================================================
   // RENDER
   // ============================================================
@@ -628,6 +659,23 @@ function App() {
       </div>
 
       {/* ======================================================
+          CONTINUOUS WHITE TOP BAR
+          Reduced height: 104px -> 80px
+      ====================================================== */}
+
+      <div
+        className="position-absolute bg-white border-bottom"
+        style={{
+          zIndex: 1040,
+          top: 0,
+          left: 0,
+          right: 0,
+          height: `${TOP_BAR_HEIGHT}px`,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ======================================================
           SIDEBAR
       ====================================================== */}
 
@@ -642,6 +690,7 @@ function App() {
         loading={spotsLoading}
         recentSearches={recentSearches}
         onRecentSearchSelect={handlePlaceSelect}
+        onRecentSearchRemove={handleRecentSearchRemove}
         onAddSpot={handleAddSpot}
         onLogin={() => {
           setPendingAction(null);
@@ -651,17 +700,18 @@ function App() {
 
       {/* ======================================================
           SEARCH BAR
+          Moved upward to fit the 80px top bar.
       ====================================================== */}
 
       <div
         className="position-absolute"
         style={{
           zIndex: 1050,
-          top: "24px",
-          left: sidebarCollapsed ? "116px" : "356px",
+          top: "12px",
+          left: `${sidebarWidth + 20}px`,
           width: sidebarCollapsed
-            ? "min(620px, calc(100vw - 420px))"
-            : "min(620px, calc(100vw - 660px))",
+            ? "min(620px, calc(100vw - 376px))"
+            : "min(620px, calc(100vw - 620px))",
           minWidth: "180px",
           transition: "left 0.3s ease, width 0.3s ease",
         }}
@@ -712,11 +762,15 @@ function App() {
 
       {/* ======================================================
           ACCOUNT AND LOCATION CONTROLS
+          Aligned to the shorter top bar.
       ====================================================== */}
 
       <div
-        className="position-absolute top-0 end-0 d-flex align-items-center gap-3 m-4"
-        style={{ zIndex: 1050 }}
+        className="position-absolute top-0 end-0 d-flex align-items-center gap-3"
+        style={{
+          zIndex: 1050,
+          margin: "12px 24px",
+        }}
       >
         {/* GPS BUTTON */}
         <button
@@ -1038,7 +1092,6 @@ function App() {
         submitting={submittingSpot}
       />
 
-      {/* CATEGORY ERROR */}
       {showSpotForm && categoriesError && (
         <div
           className="position-absolute top-50 start-50 translate-middle-x alert alert-danger shadow"

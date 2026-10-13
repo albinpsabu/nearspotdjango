@@ -15,6 +15,7 @@ function NearSpotSidebar({
   loading = false,
   recentSearches = [],
   onRecentSearchSelect,
+  onRecentSearchRemove,
   onAddSpot,
   onLogin,
 }) {
@@ -73,7 +74,6 @@ function NearSpotSidebar({
     },
   ];
 
-  // The parent App controls authentication and spot creation.
   const handleMenuClick = (item) => {
     if (item.id === "add") {
       onAddSpot?.();
@@ -91,12 +91,12 @@ function NearSpotSidebar({
     <aside
       className="position-absolute d-flex flex-column bg-white border shadow-lg"
       style={{
-        top: "12px",
-        bottom: "12px",
-        left: "12px",
+        top: "0px",
+        bottom: "0px",
+        left: "0px",
         width: collapsed ? "76px" : "320px",
-        maxWidth: "calc(100vw - 24px)",
-        borderRadius: "22px",
+        maxWidth: "100vw",
+        borderRadius: "0px",
         overflow: "hidden",
         zIndex: 1100,
         transition: "width 0.3s ease",
@@ -172,20 +172,46 @@ function NearSpotSidebar({
             ) : (
               <div className="list-group list-group-flush">
                 {recentSearches.map((item) => (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
-                    className="list-group-item list-group-item-action small px-2 text-start"
-                    onClick={() =>
-                      onRecentSearchSelect?.({
-                        latitude: item.latitude,
-                        longitude: item.longitude,
-                      })
-                    }
+                    className="list-group-item d-flex align-items-center justify-content-between gap-2 px-2"
                   >
-                    <i className="bi bi-clock-history text-success me-2" />
-                    {item.name}
-                  </button>
+                    <button
+                      type="button"
+                      className="btn border-0 p-0 text-start flex-grow-1 small text-truncate"
+                      onClick={() =>
+                        onRecentSearchSelect?.({
+                          latitude: item.latitude,
+                          longitude: item.longitude,
+                        })
+                      }
+                      title={item.name}
+                      style={{
+                        minWidth: 0,
+                        color: "#344548",
+                      }}
+                    >
+                      <i className="bi bi-clock-history text-success me-2" />
+                      {item.name}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-sm border-0 text-secondary flex-shrink-0"
+                      onClick={() =>
+                        onRecentSearchRemove?.(item.id)
+                      }
+                      title={`Remove ${item.name}`}
+                      aria-label={`Remove ${item.name} from recent searches`}
+                      style={{
+                        width: "30px",
+                        height: "30px",
+                        borderRadius: "8px",
+                      }}
+                    >
+                      <i className="bi bi-x-lg" />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -233,6 +259,7 @@ function NearSpotSidebar({
                   className="spinner-border spinner-border-sm text-success"
                   role="status"
                 />
+
                 <p className="small text-secondary mt-2">
                   Finding nearby spots...
                 </p>

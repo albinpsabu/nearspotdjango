@@ -1,164 +1,593 @@
-import { useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import { useReviews } from "../../hooks/useReviews";
+
+const API_ORIGIN = new URL(
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api"
+).origin;
+
+function getMediaUrl(file) {
+  if (!file) return "";
+  if (file.startsWith("blob:")) return file;
+
+  try {
+    return new URL(file, API_ORIGIN).href;
+  } catch {
+    return "";
+  }
+}
+
+function getErrorMessage(error) {
+  return error?.message || "Something went wrong. Please try again.";
+}
+
+function ReviewStars({ rating, interactive = false, onChange }) {
+  return (
+    <div
+      className="d-flex align-items-center gap-1"
+      aria-label={`${rating} out of 5 stars`}
+    >
+      {[1, 2, 3, 4, 5].map((star) =>
+        interactive ? (
+          <button
+            key={star}
+            type="button"
+            onClick={() => onChange(star)}
+            className="btn border-0 p-0"
+            style={{
+              color: star <= rating ? "#e9ad25" : "#cbd5d3",
+              fontSize: "27px",
+              lineHeight: 1.2,
+            }}
+            aria-label={`Rate ${star} stars`}
+          >
+            ★
+          </button>
+        ) : (
+          <span
+            key={star}
+            style={{
+              color: star <= rating ? "#e9ad25" : "#cbd5d3",
+              fontSize: "19px",
+            }}
+          >
+            ★
+          </span>
+        )
+      )}
+    </div>
+  );
+}
+
 export function SpotReviews({ spotId }) {
-  const { reviews, loading, error, fetchReviews, createReview, deleteReview } = useReviews(spotId);
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
+  const {
+    reviews,
+    loading,
+    error,
+    fetchReviews,
+    createReview,
+    updateReview,
+    deleteReview,
+  } = useReviews(spotId);
+
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [mediaFiles, setMediaFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!rating) return;
+  const [formError, setFormError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+
+  const mediaPreviews = useMemo(
+    () =>
+      mediaFiles.map((file) => ({
+        file,
+        url: URL.createObjectURL(file),
+      })),
+    [mediaFiles]
+  );
+
+  useEffect(() => {
+    return () => {
+      mediaPreviews.forEach(({ url }) => URL.revokeObjectURL(url));
+    };
+  }, [mediaPreviews]);
+
+  const averageRating = useMemo(() => {
+    if (!reviews.length) return 0;
+
+    const total = reviews.reduce(
+      (sum, review) => sum + Number(review.rating || 0),
+      0
+    );
+
+    return total / reviews.length;
+  }, [reviews]);
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setRating(5);
+    setComment("");
+    setMediaFiles([]);
+    setFormError("");
+  };
+
+  const handleWriteReview = () => {
+    if (!isAuthenticated) {
+      setActionError("Please log in to write a review.");
+      return;
+    }
+
+    if (user?.role && user.role !== "USER") {
+      setActionError("Only regular user accounts can write reviews.");
+      return;
+    }
+
+    setActionError("");
+    setEditingId(null);
+    setRating(5);
+    setComment("");
+    setMediaFiles([]);
+    setFormError("");
+    setShowForm(true);
+  };
+
+  const handleEdit = (review) => {
+    setEditingId(review.id);
+    setRating(Number(review.rating));
+    setComment(review.comment || "");
+    setMediaFiles([]);
+    setFormError("");
+    setActionError("");
+    setShowForm(true);
+  };
+
+  const handleFilesChange = (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+
+    const supportedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+    ];
+
+    const invalidFile = selectedFiles.find(
+      (file) => !supportedTypes.includes(file.type)
+    );
+
+    if (invalidFile) {
+      setFormError(`Unsupported file type: ${invalidFile.name}`);
+      event.target.value = "";
+      return;
+    }
+
+    const oversizedFile = selectedFiles.find((file) => {
+      const limit = file.type.startsWith("video/")
+        ? 100 * 1024 * 1024
+        : 10 * 1024 * 1024;
+
+      return file.size > limit;
+    });
+
+    if (oversizedFile) {
+      setFormError(`File is too large: ${oversizedFile.name}`);
+      event.target.value = "";
+      return;
+    }
+
+    setMediaFiles(selectedFiles);
+    setFormError("");
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!isAuthenticated) {
+      setFormError("Please log in to submit a review.");
+      return;
+    }
+
     setSubmitting(true);
+    setFormError("");
+
     try {
-      await createReview({ rating, comment, mediaFiles, mediaTypes: mediaFiles.map(() => "IMAGE") });
-      setShowForm(false);
-      setRating(5);
-      setComment("");
-      setMediaFiles([]);
+      const payload = {
+        rating,
+        comment,
+        mediaFiles,
+        mediaTypes: mediaFiles.map((file) =>
+          file.type.startsWith("video/") ? "VIDEO" : "IMAGE"
+        ),
+      };
+
+      if (editingId !== null) {
+        await updateReview(editingId, payload);
+      } else {
+        await createReview(payload);
+      }
+
+      resetForm();
+    } catch (err) {
+      setFormError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   };
+
   const handleDelete = async (reviewId) => {
-    if (!window.confirm("Delete this review?")) return;
-    await deleteReview(reviewId);
+    if (!window.confirm("Are you sure you want to delete this review?")) {
+      return;
+    }
+
+    setDeletingId(reviewId);
+    setActionError("");
+
+    try {
+      await deleteReview(reviewId);
+
+      if (editingId === reviewId) {
+        resetForm();
+      }
+    } catch (err) {
+      setActionError(getErrorMessage(err));
+    } finally {
+      setDeletingId(null);
+    }
   };
-  const mediaPreviews = mediaFiles.map((file, idx) => (
-    <div key={idx} className="relative group">
-      {file.type.startsWith("image/") ? (
-        <img src={URL.createObjectURL(file)} alt="Preview" className="w-20 h-20 object-cover rounded" />
-      ) : (
-        <video src={URL.createObjectURL(file)} className="w-20 h-20 object-cover rounded" muted />
-      )}
-      <button
-        type="button"
-        onClick={() => setMediaFiles((prev) => prev.filter((_, i) => i !== idx))}
-        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs opacity-0 group-hover:opacity-100"
-      >
-        ×
-      </button>
-    </div>
-  ));
-  if (loading && reviews.length === 0) return <div className="py-4 text-center text-gray-500">Loading reviews...</div>;
-  if (error) return <div className="py-4 text-center text-red-500">{error}</div>;
+
+  const formatDate = (value) => {
+    if (!value) return "";
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime())
+      ? ""
+      : date.toLocaleDateString(undefined, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Reviews ({reviews.length})</h3>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-        >
-          {showForm ? "Cancel" : "Write a Review"}
-        </button>
+    <section className="w-100" aria-label="Spot reviews">
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+        <div>
+          <h4 className="fw-bold mb-2" style={{ color: "#26373a" }}>
+            Reviews & Ratings
+          </h4>
+
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span
+              className="fw-bold"
+              style={{ fontSize: "24px", color: "#26373a" }}
+            >
+              {reviews.length ? averageRating.toFixed(1) : "—"}
+            </span>
+
+            <ReviewStars rating={Math.round(averageRating)} />
+
+            <span className="text-muted small">
+              ({reviews.length} {reviews.length === 1 ? "review" : "reviews"})
+            </span>
+          </div>
+        </div>
+
+        {!showForm && !authLoading && (
+          <button
+            type="button"
+            onClick={handleWriteReview}
+            className="btn text-white fw-semibold"
+            style={{
+              backgroundColor: "#20cfa7",
+              borderRadius: "10px",
+            }}
+          >
+            <i className="bi bi-pencil-square me-2" />
+            Write a Review
+          </button>
+        )}
       </div>
+
+      {actionError && (
+        <div className="alert alert-warning" role="alert">
+          {actionError}
+        </div>
+      )}
+
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-gray-50 p-4 rounded-lg space-y-3 border">
-          <div>
-            <label className="block text-sm font-medium mb-1">Rating</label>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setRating(star)}
-                  className={`text-2xl ${star <= rating ? "text-yellow-400" : "text-gray-300"} hover:text-yellow-400`}
-                >
-                  ★
-                </button>
-              ))}
-            </div>
+        <form
+          onSubmit={handleSubmit}
+          className="p-3 p-md-4 mb-4"
+          style={{
+            border: "1px solid #e8eeee",
+            borderRadius: "14px",
+            backgroundColor: "#f8fbfa",
+          }}
+        >
+          <h6 className="fw-bold mb-3">
+            {editingId !== null ? "Edit Your Review" : "Write Your Review"}
+          </h6>
+
+          <div className="mb-3">
+            <label className="form-label fw-semibold">Your Rating</label>
+            <ReviewStars
+              rating={rating}
+              interactive
+              onChange={setRating}
+            />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Comment (optional)</label>
+
+          <div className="mb-3">
+            <label htmlFor="spot-review-comment" className="form-label fw-semibold">
+              Your Experience
+            </label>
+
             <textarea
+              id="spot-review-comment"
+              className="form-control"
+              rows={4}
               value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(event) => setComment(event.target.value)}
               placeholder="Share your experience..."
+              maxLength={2000}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Add Photos/Videos (optional)</label>
+
+          <div className="mb-3">
+            <label htmlFor="spot-review-media" className="form-label fw-semibold">
+              Photos / Videos (optional)
+            </label>
+
             <input
+              id="spot-review-media"
+              className="form-control"
               type="file"
-              accept="image/*,video/*"
+              accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
               multiple
-              onChange={(e) => setMediaFiles(Array.from(e.target.files))}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={handleFilesChange}
             />
-            {mediaFiles.length > 0 && (
-              <div className="flex gap-2 mt-2 flex-wrap">{mediaPreviews}</div>
+
+            <div className="form-text">
+              Images up to 10 MB each; videos up to 100 MB each.
+            </div>
+
+            {editingId !== null && (
+              <div className="form-text">
+                Existing review media will remain unchanged when no new files
+                are selected. Uploading new files will replace existing media.
+              </div>
             )}
           </div>
-          <div className="flex gap-2 pt-2">
+
+          {mediaPreviews.length > 0 && (
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              {mediaPreviews.map(({ file, url }, index) => (
+                <div key={`${file.name}-${index}`} className="position-relative">
+                  {file.type.startsWith("image/") ? (
+                    <img
+                      src={url}
+                      alt={`Upload preview ${index + 1}`}
+                      style={{
+                        width: "85px",
+                        height: "85px",
+                        objectFit: "cover",
+                        borderRadius: "8px",
+                      }}
+                    />
+                  ) : (
+                    <video
+                      src={url}
+                      muted
+                      controls
+                      style={{
+                        width: "120px",
+                        height: "85px",
+                        objectFit: "cover",
+                        borderRadius: "8px",
+                      }}
+                    />
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm position-absolute top-0 end-0"
+                    onClick={() =>
+                      setMediaFiles((previous) =>
+                        previous.filter((_, fileIndex) => fileIndex !== index)
+                      )
+                    }
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {formError && (
+            <div className="alert alert-danger py-2" role="alert">
+              {formError}
+            </div>
+          )}
+
+          <div className="d-flex gap-2">
             <button
               type="submit"
               disabled={submitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="btn text-white"
+              style={{ backgroundColor: "#20cfa7" }}
             >
-              {submitting ? "Posting..." : "Post Review"}
+              {submitting
+                ? "Saving..."
+                : editingId !== null
+                ? "Update Review"
+                : "Post Review"}
             </button>
+
             <button
               type="button"
-              onClick={() => setShowForm(false)}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              className="btn btn-outline-secondary"
+              onClick={resetForm}
+              disabled={submitting}
             >
               Cancel
             </button>
           </div>
         </form>
       )}
-      <div className="space-y-3">
-        {reviews.length === 0 && !loading && (
-          <p className="text-center text-gray-500 py-4">No reviews yet. Be the first!</p>
-        )}
-        {reviews.map((review) => (
-          <div key={review.id} className="bg-white border rounded-lg p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-medium">{review.user_name || review.user_email}</span>
-                  <span className="text-sm text-gray-500">
-                    {new Date(review.created_at).toLocaleDateString()}
-                  </span>
+
+      {loading && reviews.length === 0 && (
+        <div className="text-center py-4">
+          <div className="spinner-border spinner-border-sm me-2" />
+          Loading reviews...
+        </div>
+      )}
+
+      {error && (
+        <div className="alert alert-warning d-flex justify-content-between align-items-center gap-3">
+          <span>{error}</span>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={() => fetchReviews()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && reviews.length === 0 && (
+        <div className="text-center py-4 text-muted">
+          No reviews yet. Be the first to share your experience!
+        </div>
+      )}
+
+      <div className="d-flex flex-column gap-3">
+        {reviews.map((review) => {
+          const isOwner =
+            isAuthenticated &&
+            user?.id != null &&
+            String(review.user) === String(user.id);
+
+          return (
+            <article
+              key={review.id}
+              className="p-3 p-md-4"
+              style={{
+                backgroundColor: "#fff",
+                border: "1px solid #e8eeee",
+                borderRadius: "12px",
+              }}
+            >
+              <div className="d-flex justify-content-between gap-3 flex-wrap mb-2">
+                <div>
+                  <div className="fw-bold" style={{ color: "#26373a" }}>
+                    {review.user_name || review.user_email || "NearSpot User"}
+                  </div>
+
+                  <small className="text-muted">
+                    {formatDate(review.created_at)}
+                  </small>
                 </div>
-                <div className="flex gap-1 mb-2 text-yellow-400">
-                  {[...Array(5)].map((_, i) => (
-                    <span key={i} className={i < review.rating ? "" : "text-gray-300"}>★</span>
-                  ))}
-                </div>
-                {review.comment && <p className="text-gray-700 whitespace-pre-wrap">{review.comment}</p>}
-                {review.media && review.media.length > 0 && (
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    {review.media.map((m) => (
-                      <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer" className="group">
-                        {m.media_type === "IMAGE" ? (
-                          <img src={m.url} alt="Review media" className="w-16 h-16 object-cover rounded border group-hover:opacity-80" />
-                        ) : (
-                          <video src={m.url} className="w-16 h-16 object-cover rounded border" muted />
-                        )}
-                      </a>
-                    ))}
+
+                {isOwner && (
+                  <div className="d-flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => handleEdit(review)}
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={() => handleDelete(review.id)}
+                      disabled={deletingId === review.id}
+                    >
+                      {deletingId === review.id ? "Deleting..." : "Delete"}
+                    </button>
                   </div>
                 )}
               </div>
-              {/* Delete button - only show for own reviews */}
-              {review.user === review.currentUserId && (
-                <button
-                  onClick={() => handleDelete(review.id)}
-                  className="text-red-500 hover:text-red-700 text-sm font-medium flex-shrink-0"
+
+              <ReviewStars rating={Number(review.rating)} />
+
+              {review.comment && (
+                <p
+                  className="mt-3 mb-0"
+                  style={{
+                    color: "#566568",
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.7,
+                  }}
                 >
-                  Delete
-                </button>
+                  {review.comment}
+                </p>
               )}
-            </div>
-          </div>
-        ))}
+
+              {Array.isArray(review.media) && review.media.length > 0 && (
+                <div className="d-flex flex-wrap gap-2 mt-3">
+                  {review.media.map((media) => {
+                    const url = getMediaUrl(media.file || media.url);
+
+                    if (!url) return null;
+
+                    return (
+                      <a
+                        key={media.id}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {media.media_type === "IMAGE" ? (
+                          <img
+                            src={url}
+                            alt="Review attachment"
+                            loading="lazy"
+                            style={{
+                              width: "95px",
+                              height: "95px",
+                              objectFit: "cover",
+                              borderRadius: "8px",
+                            }}
+                          />
+                        ) : (
+                          <video
+                            src={url}
+                            muted
+                            preload="metadata"
+                            style={{
+                              width: "120px",
+                              height: "95px",
+                              objectFit: "cover",
+                              borderRadius: "8px",
+                            }}
+                          />
+                        )}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
-    </div>
+    </section>
   );
 }
+
+export default SpotReviews;
