@@ -35,8 +35,18 @@ function getMediaUrl(file) {
 // HIDDENSPOT MARKER
 // ============================================================
 
-function SpotMarker({ spot }) {
-  // Validate location coordinates.
+// NEW PROPS:
+// onGetDirections: Callback provided by NearSpotMap.
+// routeLoading: Whether the routing API is processing a request.
+function SpotMarker({
+  spot,
+  onGetDirections,
+  routeLoading = false,
+}) {
+  // ==========================================================
+  // COORDINATE VALIDATION
+  // ==========================================================
+
   if (
     spot.latitude === null ||
     spot.longitude === null ||
@@ -46,12 +56,16 @@ function SpotMarker({ spot }) {
     return null;
   }
 
-  const position = [
-    Number(spot.latitude),
-    Number(spot.longitude),
-  ];
+  const latitude = Number(spot.latitude);
+  const longitude = Number(spot.longitude);
 
-  if (!position.every(Number.isFinite)) {
+  const position = [latitude, longitude];
+
+  if (
+    !position.every(Number.isFinite) ||
+    Math.abs(latitude) > 90 ||
+    Math.abs(longitude) > 180
+  ) {
     return null;
   }
 
@@ -93,6 +107,19 @@ function SpotMarker({ spot }) {
       ),
     }))
     .filter((item) => item.url);
+
+  // ==========================================================
+  // DIRECTIONS HANDLER
+  // ==========================================================
+
+  function handleDirectionsClick() {
+    // The actual API request is handled by NearSpotMap.
+    // SpotMarker only supplies the destination coordinates.
+    onGetDirections?.({
+      latitude,
+      longitude,
+    });
+  }
 
   // ==========================================================
   // RENDER
@@ -152,10 +179,28 @@ function SpotMarker({ spot }) {
 
           {/* STATUS */}
           {spot.status && (
-            <small className="text-secondary">
+            <small className="text-secondary d-block mb-3">
               Status: {spot.status}
             </small>
           )}
+
+          {/* ================================================
+              NEW: DIRECTIONS BUTTON
+              ================================================ */}
+
+          <button
+            type="button"
+            className="btn btn-success w-100 mt-2"
+            onClick={handleDirectionsClick}
+            disabled={
+              routeLoading ||
+              typeof onGetDirections !== "function"
+            }
+          >
+            {routeLoading
+              ? "Calculating route..."
+              : "↗ Get Directions"}
+          </button>
         </div>
       </Popup>
     </Marker>

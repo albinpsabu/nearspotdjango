@@ -11,6 +11,8 @@ Geospatial support: GeoDjango
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
+from decouple import config
+
 import os
 
 
@@ -28,6 +30,7 @@ load_dotenv(BASE_DIR / ".env")
 # ============================================================
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+ORS_API_KEY = config("ORS_API_KEY")
 
 # Development only. Set DEBUG=False in production.
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
@@ -43,6 +46,10 @@ ALLOWED_HOSTS = [
 # ============================================================
 
 INSTALLED_APPS = [
+    # ASGI server
+    "daphne",
+
+
     # Django applications
     "django.contrib.admin",
     "django.contrib.auth",
@@ -57,11 +64,15 @@ INSTALLED_APPS = [
     # Third-party applications
     "rest_framework",
     "corsheaders",
+    "channels",
 
     # NearSpot applications
     "accounts",
     "spots",
     "places",
+    "navigation",
+    
+    
 ]
 
 
@@ -80,7 +91,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-
+ASGI_APPLICATION="config.asgi.application"
 # ============================================================
 # GEODJANGO CONFIGURATION
 # ============================================================

@@ -9,6 +9,7 @@ urlpatterns = [
     path("api/accounts/", include("accounts.urls")),
     path("api/spots/", include("spots.urls")),
     path("api/places/", include("places.urls")),
+    path("api/navigation/", include("navigation.urls")),
 ]
 
 # Serve uploaded media files during development only.

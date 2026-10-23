@@ -8,53 +8,59 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
+
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import api from "../../services/api";
-import { useAuth } from "../../context/AuthContext";
 
 import UserLocationMarker from "./UserLocationMarker";
 import SpotMarker from "./SpotMarker";
 import MapControls from "./MapControls";
 import ExternalPlaceMarker from "./ExternalPlaceMarker";
+import RouteLayer from "./RouteLayer";
+import NavigationCamera from "./NavigationCamera";
+import SelectedExternalPlaceCard from "./SelectedExternalPlaceCard";
+
+import useTravelModes from "../../hooks/navigation/useTravelModes";
+import useLiveNavigation from "../../hooks/navigation/useLiveNavigation";
+import useRouteDeviation from "../../hooks/navigation/useRouteDeviation";
+import useTurnByTurnNavigation from "../../hooks/navigation/useTurnByTurnNavigation";
+
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
 
 const EXTERNAL_API = "/spots/external/";
+
 const FETCH_DEBOUNCE_MS = 1200;
 const MIN_DISCOVERY_ZOOM = 15;
 const MAX_DISCOVERY_AREA_KM2 = 16;
-const SERVICE_COOLDOWN_MS = 60_000;
-const FAILED_REQUEST_COOLDOWN_MS = 60_000;
+
+const SERVICE_COOLDOWN_MS = 60000;
+const FAILED_REQUEST_COOLDOWN_MS = 60000;
+
 const MAX_CACHED_AREAS = 15;
 const MAX_FAILED_KEYS = 50;
 
-// Temporary marker for a new HiddenSpot
+// Automatic rerouting
+const REROUTE_COOLDOWN_MS = 15000;
+const MAX_REROUTE_GPS_AGE_MS = 15000;
+const MAX_REROUTE_GPS_ACCURACY_METERS = 50;
+
+// ============================================================
+// NEW SPOT MARKER
+// ============================================================
+
 const newSpotIcon = L.divIcon({
-  className: "nearsport-new-spot-marker",
+  className: "bg-transparent border-0",
   html: `
-    <div style="
-      width:42px;
-      height:42px;
-      border-radius:50% 50% 50% 0;
-      background:#10b981;
-      border:4px solid white;
-      box-shadow:0 4px 14px rgba(0,0,0,.3);
-      transform:rotate(-45deg);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      box-sizing:border-box;
-    ">
-      <span style="
-        transform:rotate(45deg);
-        color:white;
-        font-size:22px;
-        font-weight:bold;
-      ">+</span>
+    <div class="d-flex align-items-center justify-content-center
+                rounded-circle bg-success text-white border border-4
+                border-white shadow-lg fw-bold fs-4"
+         style="width:42px;height:42px;">
+      +
     </div>
   `,
   iconSize: [42, 42],
@@ -108,48 +114,6 @@ function getApiError(error, fallback) {
   return fallback;
 }
 
-function getPlacePath(place) {
-  return (
-    `${EXTERNAL_API}` +
-    `${encodeURIComponent(place.osm_type)}/` +
-    `${encodeURIComponent(place.osm_id)}/`
-  );
-}
-
-function formatCategory(category) {
-  if (!category) return "Place";
-
-  return category
-    .split(":")
-    .pop()
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase()
-    );
-}
-
-function getReviewUserId(review) {
-  const value =
-    review.user_id ??
-    review.user?.id ??
-    (typeof review.user === "number"
-      ? review.user
-      : null);
-
-  return value == null ? null : String(value);
-}
-
-function getReviewAuthor(review) {
-  return (
-    review.user_name ||
-    review.username ||
-    review.user?.name ||
-    review.user?.username ||
-    review.user?.email ||
-    "NearSpot user"
-  );
-}
-
 function coversViewport(cachedBounds, bounds) {
   return (
     cachedBounds.south <= bounds.south &&
@@ -175,12 +139,76 @@ function filterPlaces(places, bounds) {
   });
 }
 
+function isValidCoordinates(latitude, longitude) {
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 &&
+    Math.abs(longitude) <= 180
+  );
+}
+
+function getValidDestination(destination) {
+  if (
+    destination?.latitude == null ||
+    destination?.longitude == null
+  ) {
+    return null;
+  }
+
+  const latitude = Number(destination.latitude);
+  const longitude = Number(destination.longitude);
+
+  if (!isValidCoordinates(latitude, longitude)) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function isReliableLiveLocation(location) {
+  if (!location) return false;
+
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  const accuracy = Number(location.accuracy);
+  const timestamp = Number(location.timestamp);
+
+  if (!isValidCoordinates(latitude, longitude)) {
+    return false;
+  }
+
+  if (
+    location.accuracy == null ||
+    !Number.isFinite(accuracy) ||
+    accuracy < 0 ||
+    accuracy > MAX_REROUTE_GPS_ACCURACY_METERS
+  ) {
+    return false;
+  }
+
+  if (
+    location.timestamp == null ||
+    !Number.isFinite(timestamp) ||
+    timestamp > Date.now() ||
+    Date.now() - timestamp > MAX_REROUTE_GPS_AGE_MS
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 // ============================================================
 // MAP LOCATION CONTROLLER
 // ============================================================
 
-function MapLocationController({ location }) {
+function MapLocationController({
+  location,
+  navigationActive = false,
+}) {
   const map = useMap();
+  const previousLocationRef = useRef(null);
 
   useEffect(() => {
     if (!location) return;
@@ -188,12 +216,26 @@ function MapLocationController({ location }) {
     const latitude = Number(location.latitude);
     const longitude = Number(location.longitude);
 
-    if (
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude)
-    ) {
+    if (!isValidCoordinates(latitude, longitude)) {
       return;
     }
+
+    const previousLocation = previousLocationRef.current;
+
+    const locationChanged =
+      !previousLocation ||
+      previousLocation.latitude !== latitude ||
+      previousLocation.longitude !== longitude;
+
+    if (!locationChanged) return;
+
+    previousLocationRef.current = {
+      latitude,
+      longitude,
+    };
+
+    // NavigationCamera controls the map during navigation.
+    if (navigationActive) return;
 
     map.invalidateSize();
 
@@ -201,13 +243,18 @@ function MapLocationController({ location }) {
       animate: true,
       duration: 1.2,
     });
-  }, [location?.latitude, location?.longitude, map]);
+  }, [
+    location?.latitude,
+    location?.longitude,
+    navigationActive,
+    map,
+  ]);
 
   return null;
 }
 
 // ============================================================
-// OPTIMIZED EXTERNAL PLACE DISCOVERY
+// EXTERNAL OSM PLACE DISCOVERY
 // ============================================================
 
 function ExternalPlaceDiscovery({ onPlacesChange }) {
@@ -220,6 +267,7 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
   const cacheRef = useRef([]);
   const failedRequestsRef = useRef(new Map());
   const serviceRetryAfterRef = useRef(0);
+
   const onPlacesChangeRef = useRef(onPlacesChange);
 
   useEffect(() => {
@@ -228,6 +276,10 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
   useEffect(() => {
     let active = true;
+
+    // --------------------------------------------------------
+    // VIEWPORT
+    // --------------------------------------------------------
 
     function getViewport() {
       const zoom = map.getZoom();
@@ -263,6 +315,10 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
       return bounds;
     }
+
+    // --------------------------------------------------------
+    // CACHE
+    // --------------------------------------------------------
 
     function getRequestKey(bounds) {
       return [
@@ -301,6 +357,10 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
       );
     }
 
+    // --------------------------------------------------------
+    // FAILURE TRACKING
+    // --------------------------------------------------------
+
     function rememberFailure(requestKey) {
       failedRequestsRef.current.set(
         requestKey,
@@ -311,8 +371,9 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
         failedRequestsRef.current.size >
         MAX_FAILED_KEYS
       ) {
-        const oldestKey =
-          failedRequestsRef.current.keys().next().value;
+        const oldestKey = failedRequestsRef.current
+          .keys()
+          .next().value;
 
         failedRequestsRef.current.delete(oldestKey);
       }
@@ -347,10 +408,13 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
       return SERVICE_COOLDOWN_MS;
     }
 
+    // --------------------------------------------------------
+    // FETCH PLACES
+    // --------------------------------------------------------
+
     async function fetchPlaces() {
       if (!active) return;
 
-      // Prevent overlapping requests
       if (runningRef.current) {
         pendingRef.current = true;
         return;
@@ -358,9 +422,11 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
       const bounds = getViewport();
 
-      if (!bounds) return;
+      if (!bounds) {
+        onPlacesChangeRef.current([]);
+        return;
+      }
 
-      // Serve cached places first
       const cachedArea = findCachedArea(bounds);
 
       if (cachedArea) {
@@ -370,12 +436,12 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
         return;
       }
 
-      // Respect service cooldown
       if (Date.now() < serviceRetryAfterRef.current) {
         return;
       }
 
       const requestKey = getRequestKey(bounds);
+
       const lastFailure =
         failedRequestsRef.current.get(requestKey);
 
@@ -392,7 +458,9 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
       try {
         const response = await api.get(
           `${EXTERNAL_API}nearby/`,
-          { params: bounds }
+          {
+            params: bounds,
+          }
         );
 
         if (!active) return;
@@ -404,6 +472,7 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
           : [];
 
         storeCachedArea(bounds, places);
+
         failedRequestsRef.current.delete(requestKey);
         serviceRetryAfterRef.current = 0;
 
@@ -435,10 +504,7 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
           pendingRef.current = false;
 
           console.warn(
-            "NearSpot discovery temporarily unavailable. " +
-            `Requests paused for ${Math.ceil(
-              cooldown / 1000
-            )} seconds.`
+            "NearSpot discovery temporarily unavailable."
           );
 
           return;
@@ -455,8 +521,7 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
           pendingRef.current = false;
 
           console.warn(
-            "NearSpot discovery network unavailable. " +
-            "Requests paused for 60 seconds."
+            "NearSpot discovery network unavailable."
           );
 
           return;
@@ -478,6 +543,10 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
         }
       }
     }
+
+    // --------------------------------------------------------
+    // DEBOUNCE
+    // --------------------------------------------------------
 
     function scheduleFetch() {
       if (!active) return;
@@ -505,7 +574,9 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
     return () => {
       active = false;
+
       map.off("moveend", scheduleFetch);
+
       clearTimeout(debounceRef.current);
     };
   }, [map]);
@@ -526,10 +597,9 @@ function MapClickHandler({
     click(event) {
       const target = event.originalEvent?.target;
 
-      // Don't select a location by clicking an existing marker
       if (
         target?.closest?.(
-          ".nearsport-external-marker, .leaflet-marker-icon"
+          ".nearsport-external-marker, .leaflet-marker-icon, .leaflet-popup"
         )
       ) {
         return;
@@ -544,927 +614,12 @@ function MapClickHandler({
         return;
       }
 
-      // Normal behavior: close selected place details
       onClose();
     },
   });
 
   return null;
 }
-
-// ============================================================
-// SELECTED EXTERNAL PLACE CARD
-// ============================================================
-
-function SelectedExternalPlaceCard({ place, onClose }) {
-  const { user, isAuthenticated } = useAuth();
-
-  const [details, setDetails] = useState(null);
-  const [loadingDetails, setLoadingDetails] =
-    useState(true);
-  const [detailsError, setDetailsError] = useState("");
-
-  const [isSaved, setIsSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
-
-  const [editingReview, setEditingReview] =
-    useState(false);
-
-  const [submittingReview, setSubmittingReview] =
-    useState(false);
-
-  const [actionError, setActionError] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
-
-  const placePath = getPlacePath(place);
-
-  const latitude = Number(place.latitude);
-  const longitude = Number(place.longitude);
-
-  const directionsUrl =
-    "https://www.google.com/maps/dir/?api=1" +
-    `&destination=${encodeURIComponent(
-      `${latitude},${longitude}`
-    )}`;
-
-  const reviews = Array.isArray(details?.reviews)
-    ? details.reviews
-    : [];
-
-  const userId =
-    user?.id == null ? null : String(user.id);
-
-  const myReview =
-    userId === null
-      ? null
-      : reviews.find(
-          (review) =>
-            getReviewUserId(review) === userId
-        ) || null;
-
-  const averageRating = details?.average_rating;
-  const reviewCount = details?.review_count ?? 0;
-
-  // ----------------------------------------------------------
-  // LOAD PLACE DETAILS
-  // ----------------------------------------------------------
-
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-
-    async function loadDetails() {
-      setDetails(null);
-      setIsSaved(false);
-      setLoadingDetails(true);
-      setDetailsError("");
-      setActionError("");
-      setActionMessage("");
-      setEditingReview(false);
-      setRating(5);
-      setComment("");
-
-      try {
-        const response = await api.get(placePath, {
-          signal: controller.signal,
-        });
-
-        if (!active) return;
-
-        setDetails(response.data);
-        setIsSaved(Boolean(response.data.is_saved));
-      } catch (error) {
-        if (!active || controller.signal.aborted) {
-          return;
-        }
-
-        if (error.response?.status === 404) {
-          setDetails(null);
-          setIsSaved(false);
-        } else {
-          setDetailsError(
-            getApiError(
-              error,
-              "Could not load place details."
-            )
-          );
-        }
-      } finally {
-        if (active) {
-          setLoadingDetails(false);
-        }
-      }
-    }
-
-    loadDetails();
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [placePath, isAuthenticated]);
-
-  // Close details on Escape
-  useEffect(() => {
-    function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown
-      );
-    };
-  }, [onClose]);
-
-  async function refreshDetails() {
-    const response = await api.get(placePath);
-
-    setDetails(response.data);
-    setIsSaved(Boolean(response.data.is_saved));
-
-    return response.data;
-  }
-
-  // ----------------------------------------------------------
-  // SAVE / UNSAVE
-  // ----------------------------------------------------------
-
-  async function handleSaveToggle() {
-    if (!isAuthenticated || saving) return;
-
-    setSaving(true);
-    setActionError("");
-    setActionMessage("");
-
-    try {
-      if (isSaved) {
-        await api.delete(`${placePath}save/`);
-
-        setIsSaved(false);
-        setActionMessage(
-          "Place removed from saved places."
-        );
-      } else {
-        await api.post(`${placePath}save/`);
-
-        setIsSaved(true);
-        setActionMessage(
-          "Place saved successfully."
-        );
-      }
-
-      await refreshDetails();
-    } catch (error) {
-      setActionError(
-        getApiError(
-          error,
-          "Could not update your saved places."
-        )
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ----------------------------------------------------------
-  // SUBMIT / UPDATE REVIEW
-  // ----------------------------------------------------------
-
-  async function handleReviewSubmit(event) {
-    event.preventDefault();
-
-    if (!isAuthenticated || submittingReview) {
-      return;
-    }
-
-    setSubmittingReview(true);
-    setActionError("");
-    setActionMessage("");
-
-    const payload = {
-      rating: Number(rating),
-      comment: comment.trim(),
-    };
-
-    try {
-      if (editingReview && myReview) {
-        await api.patch(
-          `${placePath}review/`,
-          payload
-        );
-
-        setActionMessage(
-          "Review updated successfully."
-        );
-      } else {
-        await api.post(
-          `${placePath}review/`,
-          payload
-        );
-
-        setActionMessage(
-          "Review submitted successfully."
-        );
-      }
-
-      await refreshDetails();
-
-      setEditingReview(false);
-      setRating(5);
-      setComment("");
-    } catch (error) {
-      console.error(
-        "Review submission failed:",
-        error.response?.data || error.message
-      );
-
-      setActionError(
-        getApiError(
-          error,
-          "Could not submit your review."
-        )
-      );
-    } finally {
-      setSubmittingReview(false);
-    }
-  }
-
-  // ----------------------------------------------------------
-  // EDIT REVIEW
-  // ----------------------------------------------------------
-
-  function handleEditReview() {
-    if (!myReview) return;
-
-    setRating(Number(myReview.rating) || 5);
-    setComment(myReview.comment || "");
-    setEditingReview(true);
-
-    setActionError("");
-    setActionMessage("");
-  }
-
-  // ----------------------------------------------------------
-  // DELETE REVIEW
-  // ----------------------------------------------------------
-
-  async function handleDeleteReview() {
-    if (!myReview || submittingReview) return;
-
-    const confirmed = window.confirm(
-      "Are you sure you want to delete your review?"
-    );
-
-    if (!confirmed) return;
-
-    setSubmittingReview(true);
-    setActionError("");
-    setActionMessage("");
-
-    try {
-      await api.delete(`${placePath}review/`);
-
-      await refreshDetails();
-
-      setEditingReview(false);
-      setRating(5);
-      setComment("");
-
-      setActionMessage(
-        "Review deleted successfully."
-      );
-    } catch (error) {
-      setActionError(
-        getApiError(
-          error,
-          "Could not delete your review."
-        )
-      );
-    } finally {
-      setSubmittingReview(false);
-    }
-  }
-
-  // ----------------------------------------------------------
-  // PLACE DETAILS UI
-  // ----------------------------------------------------------
-
-  return (
-    <aside
-      className="nearsport-place-card"
-      aria-label="Selected place details"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        className="nearsport-place-card-close"
-        onClick={onClose}
-        aria-label="Close place details"
-      >
-        ×
-      </button>
-
-      <div className="nearsport-place-card-content">
-        <span className="nearsport-place-card-label">
-          OpenStreetMap place
-        </span>
-
-        <h2>{details?.name || place.name}</h2>
-
-        <p className="nearsport-place-card-category">
-          {formatCategory(
-            details?.category || place.category
-          )}
-        </p>
-
-        <p className="nearsport-place-card-rating">
-          {loadingDetails
-            ? "Loading NearSpot ratings..."
-            : averageRating != null
-            ? `★ ${averageRating} / 5 (${reviewCount} reviews)`
-            : "☆ No NearSpot ratings yet"}
-        </p>
-
-        {(details?.address || place.address) && (
-          <p className="nearsport-place-card-address">
-            📍 {details?.address || place.address}
-          </p>
-        )}
-
-        <div className="nearsport-place-card-actions">
-          <a
-            href={directionsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="nearsport-place-card-directions"
-          >
-            ↗ Directions
-          </a>
-
-          {isAuthenticated && (
-            <button
-              type="button"
-              className={
-                "nearsport-place-card-save" +
-                (isSaved ? " is-saved" : "")
-              }
-              onClick={handleSaveToggle}
-              disabled={saving || loadingDetails}
-            >
-              {saving
-                ? "Please wait..."
-                : isSaved
-                ? "♥ Saved"
-                : "♡ Save"}
-            </button>
-          )}
-        </div>
-
-        {!isAuthenticated && (
-          <p className="nearsport-place-card-login">
-            Log in to save this place or write a review.
-          </p>
-        )}
-
-        {detailsError && (
-          <p
-            className="nearsport-place-card-error"
-            role="alert"
-          >
-            {detailsError}
-          </p>
-        )}
-
-        {actionError && (
-          <p
-            className="nearsport-place-card-error"
-            role="alert"
-          >
-            {actionError}
-          </p>
-        )}
-
-        {actionMessage && (
-          <p
-            className="nearsport-place-card-success"
-            role="status"
-          >
-            {actionMessage}
-          </p>
-        )}
-
-        <div className="nearsport-place-card-reviews">
-          <h3>Reviews ({reviewCount})</h3>
-
-          {loadingDetails ? (
-            <p>Loading reviews...</p>
-          ) : reviews.length === 0 ? (
-            <p>
-              No reviews yet. Be the first to review
-              this place!
-            </p>
-          ) : (
-            <div className="nearsport-review-list">
-              {reviews.map((review, index) => (
-                <div
-                  key={review.id ?? index}
-                  className="nearsport-review-item"
-                >
-                  <div className="nearsport-review-heading">
-                    <strong>
-                      {getReviewAuthor(review)}
-                    </strong>
-
-                    <span>
-                      {"★".repeat(
-                        Math.max(
-                          0,
-                          Math.min(
-                            5,
-                            Number(review.rating) || 0
-                          )
-                        )
-                      )}
-                    </span>
-                  </div>
-
-                  {review.comment && (
-                    <p>{review.comment}</p>
-                  )}
-
-                  {review.created_at && (
-                    <small>
-                      {new Date(
-                        review.created_at
-                      ).toLocaleDateString()}
-                    </small>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {isAuthenticated &&
-            myReview &&
-            !editingReview && (
-              <div className="nearsport-review-controls">
-                <button
-                  type="button"
-                  onClick={handleEditReview}
-                >
-                  Edit my review
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDeleteReview}
-                  disabled={submittingReview}
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-
-          {isAuthenticated &&
-            !loadingDetails &&
-            (!myReview || editingReview) && (
-              <form
-                className="nearsport-review-form"
-                onSubmit={handleReviewSubmit}
-              >
-                <h4>
-                  {editingReview
-                    ? "Edit your review"
-                    : "Write a review"}
-                </h4>
-
-                <label htmlFor="nearsport-review-rating">
-                  Rating
-                </label>
-
-                <select
-                  id="nearsport-review-rating"
-                  value={rating}
-                  onChange={(event) =>
-                    setRating(Number(event.target.value))
-                  }
-                  required
-                >
-                  <option value={5}>★★★★★ — 5</option>
-                  <option value={4}>★★★★☆ — 4</option>
-                  <option value={3}>★★★☆☆ — 3</option>
-                  <option value={2}>★★☆☆☆ — 2</option>
-                  <option value={1}>★☆☆☆☆ — 1</option>
-                </select>
-
-                <label htmlFor="nearsport-review-comment">
-                  Your review
-                </label>
-
-                <textarea
-                  id="nearsport-review-comment"
-                  value={comment}
-                  onChange={(event) =>
-                    setComment(event.target.value)
-                  }
-                  placeholder="Share your experience..."
-                  rows={4}
-                />
-
-                <div className="nearsport-review-form-actions">
-                  <button
-                    type="submit"
-                    disabled={submittingReview}
-                  >
-                    {submittingReview
-                      ? "Submitting..."
-                      : editingReview
-                      ? "Update review"
-                      : "Submit review"}
-                  </button>
-
-                  {editingReview && (
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => {
-                        setEditingReview(false);
-                        setRating(5);
-                        setComment("");
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              </form>
-            )}
-        </div>
-
-        <p className="nearsport-place-card-attribution">
-          Place data © OpenStreetMap contributors
-        </p>
-      </div>
-    </aside>
-  );
-}
-
-// ============================================================
-// STYLES
-// ============================================================
-
-const mapStyles = `
-.nearsport-map {
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-}
-
-.nearsport-map .leaflet-control-zoom {
-  border: none;
-  box-shadow: 0 8px 24px rgba(20,40,45,.14);
-}
-
-.nearsport-map .leaflet-control-zoom a {
-  width: 36px;
-  height: 36px;
-  line-height: 36px;
-  border: none;
-  background: rgba(255,255,255,.96);
-  color: #263639;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.nearsport-map .leaflet-control-zoom a:hover {
-  background: #f2fbf8;
-  color: #10cda4;
-}
-
-.nearsport-map .leaflet-control-attribution {
-  background: rgba(255,255,255,.82);
-  backdrop-filter: blur(8px);
-  border-radius: 8px 0 0 0;
-  padding: 3px 7px;
-  font-size: 9px;
-}
-
-.nearsport-place-card {
-  position: absolute;
-  top: 110px;
-  left: 18px;
-  width: min(350px, calc(100% - 36px));
-  max-height: calc(100% - 130px);
-  overflow-y: auto;
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 12px 45px rgba(0,0,0,.18);
-  z-index: 1000;
-  color: #263639;
-}
-
-.nearsport-place-card-content {
-  padding: 24px;
-}
-
-.nearsport-place-card-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 50%;
-  background: #e2e8f0;
-  color: #334155;
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-
-.nearsport-place-card-close:hover {
-  background: #cbd5e1;
-}
-
-.nearsport-place-card-label {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  color: #059669;
-  margin-bottom: 10px;
-}
-
-.nearsport-place-card h2 {
-  font-size: 23px;
-  line-height: 1.3;
-  margin: 0 38px 8px 0;
-  font-weight: 700;
-}
-
-.nearsport-place-card-category {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0 0 14px;
-}
-
-.nearsport-place-card-rating {
-  font-size: 13px;
-  color: #64748b;
-  margin: 0 0 16px;
-}
-
-.nearsport-place-card-address {
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.6;
-  margin: 0 0 18px;
-}
-
-.nearsport-place-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 16px 0 22px;
-}
-
-.nearsport-place-card-directions,
-.nearsport-place-card-save {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 11px 18px;
-  border-radius: 24px;
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.nearsport-place-card-directions {
-  background: #059669;
-  color: white;
-}
-
-.nearsport-place-card-directions:hover {
-  background: #047857;
-  color: white;
-}
-
-.nearsport-place-card-save {
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  color: #047857;
-}
-
-.nearsport-place-card-save.is-saved {
-  background: #d1fae5;
-  border-color: #059669;
-}
-
-.nearsport-place-card-save:disabled {
-  opacity: .6;
-  cursor: not-allowed;
-}
-
-.nearsport-place-card-login {
-  padding: 12px;
-  background: #f8fafc;
-  border-radius: 10px;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.nearsport-place-card-error,
-.nearsport-place-card-success {
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.nearsport-place-card-error {
-  color: #b91c1c;
-  background: #fef2f2;
-}
-
-.nearsport-place-card-success {
-  color: #047857;
-  background: #ecfdf5;
-}
-
-.nearsport-place-card-reviews {
-  border-top: 1px solid #e2e8f0;
-  padding-top: 18px;
-}
-
-.nearsport-place-card-reviews h3 {
-  font-size: 16px;
-  margin: 0 0 10px;
-}
-
-.nearsport-place-card-reviews p {
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.nearsport-review-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.nearsport-review-item {
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #f8fafc;
-}
-
-.nearsport-review-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.nearsport-review-heading span {
-  color: #f59e0b;
-  white-space: nowrap;
-}
-
-.nearsport-review-item p {
-  margin: 8px 0;
-  overflow-wrap: anywhere;
-}
-
-.nearsport-review-item small {
-  color: #94a3b8;
-}
-
-.nearsport-review-controls {
-  display: flex;
-  gap: 10px;
-  margin: 12px 0;
-}
-
-.nearsport-review-controls button {
-  border: none;
-  background: #f1f5f9;
-  border-radius: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 12px;
-  color: #334155;
-}
-
-.nearsport-review-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.nearsport-review-form h4 {
-  margin: 0 0 4px;
-  font-size: 14px;
-}
-
-.nearsport-review-form label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.nearsport-review-form select,
-.nearsport-review-form textarea {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 10px;
-  font: inherit;
-  font-size: 13px;
-  background: white;
-  color: #263639;
-}
-
-.nearsport-review-form textarea {
-  resize: vertical;
-}
-
-.nearsport-review-form-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.nearsport-review-form-actions button {
-  padding: 10px 14px;
-  border: none;
-  border-radius: 10px;
-  background: #059669;
-  color: white;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.nearsport-review-form-actions button.secondary {
-  background: #e2e8f0;
-  color: #334155;
-}
-
-.nearsport-review-form-actions button:disabled {
-  opacity: .6;
-  cursor: not-allowed;
-}
-
-.nearsport-place-card-attribution {
-  border-top: 1px solid #e2e8f0;
-  padding-top: 14px;
-  margin-top: 20px;
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-@media (max-width: 600px) {
-  .nearsport-place-card {
-    top: auto;
-    left: 10px;
-    bottom: 18px;
-    width: calc(100% - 20px);
-    max-height: 65%;
-    border-radius: 18px;
-  }
-
-  .nearsport-place-card-content {
-    padding: 20px;
-  }
-
-  .nearsport-place-card h2 {
-    font-size: 20px;
-  }
-}
-`;
 
 // ============================================================
 // MAIN NEARSPOT MAP
@@ -1478,7 +633,14 @@ function NearSpotMap({
   isSelectingSpot = false,
   selectedSpotLocation = null,
   onSpotLocationSelect,
+  navigationDestination = null,
+  onDirectionsChange,
+  navigationActionsRef,
 }) {
+  // ==========================================================
+  // EXTERNAL PLACE STATE
+  // ==========================================================
+
   const [externalPlaces, setExternalPlaces] =
     useState([]);
 
@@ -1486,6 +648,113 @@ function NearSpotMap({
     selectedExternalPlace,
     setSelectedExternalPlace,
   ] = useState(null);
+
+  // ==========================================================
+  // ROUTING STATE
+  // ==========================================================
+
+  const [activeRoute, setActiveRoute] = useState(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState("");
+  const [destinationName, setDestinationName] = useState("Selected destination");
+
+  const [selectedMode, setSelectedMode] =
+    useState("driving");
+
+  // Automatic rerouting state
+  const [isRerouting, setIsRerouting] = useState(false);
+  const [rerouteError, setRerouteError] = useState("");
+
+  const {
+    modes,
+    loading: modesLoading,
+    error: modesError,
+  } = useTravelModes();
+
+  // ==========================================================
+  // LIVE GPS TRACKING
+  // ==========================================================
+
+  const {
+    currentLocation: liveLocation,
+    isTracking,
+    locationError,
+    startTracking,
+    stopTracking,
+  } = useLiveNavigation();
+
+  // Track GPS only while navigation is active.
+  useEffect(() => {
+    if (isNavigating && activeRoute) {
+      startTracking();
+    } else {
+      stopTracking();
+    }
+  }, [
+    isNavigating,
+    Boolean(activeRoute),
+    startTracking,
+    stopTracking,
+  ]);
+
+
+  
+  // ==========================================================
+  // OFF-ROUTE DETECTION
+  // ==========================================================
+
+  const {
+    isOffRoute,
+    distanceFromRoute,
+  } = useRouteDeviation({
+    location: liveLocation,
+    route: activeRoute,
+    enabled:
+      isNavigating &&
+      isTracking &&
+      Boolean(activeRoute) &&
+      !routeLoading,
+  });
+
+  // ==========================================================
+  // TURN-BY-TURN NAVIGATION
+  // ==========================================================
+
+  const navigation = useTurnByTurnNavigation({
+    route: activeRoute,
+    location: liveLocation,
+    enabled:
+      isNavigating &&
+      isTracking &&
+      Boolean(activeRoute) &&
+      !isOffRoute &&
+      !routeLoading,
+  });
+
+
+
+  // ==========================================================
+  // REQUEST TRACKING
+  // ==========================================================
+
+  const routeRequestIdRef = useRef(0);
+  const routeLoadingRef = useRef(false);
+  const processedDestinationRef = useRef(null);
+
+  const currentDestinationRef = useRef(null);
+  const destinationNameRef = useRef("Selected destination");
+
+  const reroutingRef = useRef(false);
+  const lastRerouteAtRef = useRef(0);
+  const lastRerouteFixRef = useRef(null);
+
+  // Used to invalidate pending rerouting when navigation stops.
+  const navigationSessionRef = useRef(0);
+
+  // ==========================================================
+  // EXTERNAL PLACE SELECTION
+  // ==========================================================
 
   function handleExternalPlaceClick(place) {
     setSelectedExternalPlace(place);
@@ -1495,45 +764,563 @@ function NearSpotMap({
     setSelectedExternalPlace(null);
   }
 
+  // ==========================================================
+  // ROUTE REQUEST HELPER
+  // ==========================================================
+
+  async function requestRoute({
+    origin,
+    destination,
+    mode,
+  }) {
+    const response = await api.post(
+      "/navigation/routes/",
+      {
+        origin_latitude: origin.latitude,
+        origin_longitude: origin.longitude,
+        destination_latitude: destination.latitude,
+        destination_longitude: destination.longitude,
+        travel_mode: mode,
+      }
+    );
+
+    if (!response.data?.features?.length) {
+      throw new Error(
+        "No route was returned for this destination."
+      );
+    }
+
+    return response.data;
+  }
+
+  // ==========================================================
+  // GET DIRECTIONS
+  // ==========================================================
+
+  async function handleGetDirections(
+    destination,
+    mode = selectedMode
+  ) {
+    if (routeLoadingRef.current) return;
+
+    const validDestination =
+      getValidDestination(destination);
+
+    if (!validDestination) {
+      setRouteError(
+        "Selected place has invalid coordinates."
+      );
+      return;
+    }
+
+    const nextDestinationName =
+      destination?.name ||
+      destination?.title ||
+      destination?.spot_name ||
+      (getValidDestination(destination) &&
+      currentDestinationRef.current?.latitude === validDestination.latitude &&
+      currentDestinationRef.current?.longitude === validDestination.longitude
+        ? destinationNameRef.current
+        : "Selected destination");
+
+    const previousDestination =
+      currentDestinationRef.current;
+
+    const destinationChanged =
+      !previousDestination ||
+      previousDestination.latitude !==
+        validDestination.latitude ||
+      previousDestination.longitude !==
+        validDestination.longitude;
+
+    // A different destination begins a new navigation session.
+    // Switching travel modes for the same destination does not.
+    if (destinationChanged) {
+      navigationSessionRef.current += 1;
+      setIsNavigating(false);
+      stopTracking();
+      lastRerouteAtRef.current = 0;
+      lastRerouteFixRef.current = null;
+      setRerouteError("");
+    }
+
+    const requestId = ++routeRequestIdRef.current;
+
+    routeLoadingRef.current = true;
+    setRouteLoading(true);
+    setRouteError("");
+
+    try {
+      let origin = null;
+
+      // While navigating, use the latest reliable GPS position.
+      if (
+        isNavigating &&
+        !destinationChanged &&
+        isReliableLiveLocation(liveLocation)
+      ) {
+        origin = {
+          latitude: Number(liveLocation.latitude),
+          longitude: Number(liveLocation.longitude),
+        };
+      }
+
+      // Otherwise get a fresh location.
+      if (!origin) {
+        if (!navigator.geolocation) {
+          throw new Error(
+            "Geolocation is not supported by this browser."
+          );
+        }
+
+        const position = await new Promise(
+          (resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              resolve,
+              reject,
+              {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 5000,
+              }
+            );
+          }
+        );
+
+        if (requestId !== routeRequestIdRef.current) {
+          return;
+        }
+
+        origin = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+      }
+
+      const route = await requestRoute({
+        origin,
+        destination: validDestination,
+        mode,
+      });
+
+      if (requestId !== routeRequestIdRef.current) {
+        return;
+      }
+
+      setActiveRoute(route);
+
+      currentDestinationRef.current =
+        validDestination;
+      destinationNameRef.current = nextDestinationName;
+      setDestinationName(nextDestinationName);
+
+      setSelectedExternalPlace(null);
+      setRouteError("");
+      setRerouteError("");
+    } catch (error) {
+      if (requestId !== routeRequestIdRef.current) {
+        return;
+      }
+
+      const locationMessage =
+        error?.code === 1
+          ? "Location permission was denied."
+          : error?.code === 2
+          ? "Your location is currently unavailable."
+          : error?.code === 3
+          ? "Getting your location timed out."
+          : null;
+
+      setRouteError(
+        locationMessage ||
+          getApiError(
+            error,
+            error?.message ||
+              "Unable to calculate directions."
+          )
+      );
+    } finally {
+      if (requestId === routeRequestIdRef.current) {
+        routeLoadingRef.current = false;
+        setRouteLoading(false);
+      }
+    }
+  }
+
+  // ==========================================================
+  // AUTOMATIC REROUTING
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      !isNavigating ||
+      !isTracking ||
+      !activeRoute ||
+      !isOffRoute ||
+      routeLoadingRef.current ||
+      reroutingRef.current
+    ) {
+      return;
+    }
+
+    const destination =
+      currentDestinationRef.current;
+
+    if (!destination) return;
+
+    if (!isReliableLiveLocation(liveLocation)) {
+      return;
+    }
+
+    const fixTimestamp = Number(liveLocation.timestamp);
+
+    // Never retry repeatedly for the same GPS reading.
+    if (lastRerouteFixRef.current === fixTimestamp) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (
+      now - lastRerouteAtRef.current <
+      REROUTE_COOLDOWN_MS
+    ) {
+      return;
+    }
+
+    const requestId = ++routeRequestIdRef.current;
+    const navigationSession =
+      navigationSessionRef.current;
+
+    const origin = {
+      latitude: Number(liveLocation.latitude),
+      longitude: Number(liveLocation.longitude),
+    };
+
+    lastRerouteAtRef.current = now;
+    lastRerouteFixRef.current = fixTimestamp;
+
+    reroutingRef.current = true;
+    routeLoadingRef.current = true;
+
+    setIsRerouting(true);
+    setRouteLoading(true);
+    setRerouteError("");
+
+    async function reroute() {
+      try {
+        const route = await requestRoute({
+          origin,
+          destination,
+          mode: selectedMode,
+        });
+
+        if (
+          requestId !== routeRequestIdRef.current ||
+          navigationSession !==
+            navigationSessionRef.current
+        ) {
+          return;
+        }
+
+        setActiveRoute(route);
+        setRerouteError("");
+      } catch (error) {
+        if (
+          requestId !== routeRequestIdRef.current ||
+          navigationSession !==
+            navigationSessionRef.current
+        ) {
+          return;
+        }
+
+        setRerouteError(
+          getApiError(
+            error,
+            error?.message ||
+              "Unable to calculate a new route."
+          )
+        );
+      } finally {
+        if (requestId === routeRequestIdRef.current) {
+          reroutingRef.current = false;
+          routeLoadingRef.current = false;
+
+          setIsRerouting(false);
+          setRouteLoading(false);
+        }
+      }
+    }
+
+    reroute();
+  }, [
+    isNavigating,
+    isTracking,
+    isOffRoute,
+    activeRoute,
+    selectedMode,
+    liveLocation?.latitude,
+    liveLocation?.longitude,
+    liveLocation?.accuracy,
+    liveLocation?.timestamp,
+  ]);
+
+  // ==========================================================
+  // TRAVEL MODE CHANGE
+  // ==========================================================
+
+  function handleModeChange(mode) {
+    if (
+      mode === selectedMode ||
+      routeLoadingRef.current
+    ) {
+      return;
+    }
+
+    const supportedMode = modes.some(
+      (item) =>
+        (typeof item === "string"
+          ? item
+          : item.id) === mode
+    );
+
+    if (!supportedMode) {
+      return;
+    }
+
+    const destination =
+      currentDestinationRef.current;
+
+    setSelectedMode(mode);
+
+    if (destination) {
+      handleGetDirections(destination, mode);
+    }
+  }
+
+  // ==========================================================
+  // AUTOMATIC NAVIGATION FROM APP
+  // ==========================================================
+
+  useEffect(() => {
+    if (!navigationDestination) {
+      processedDestinationRef.current = null;
+      return;
+    }
+
+    const latitude = Number(
+      navigationDestination.latitude
+    );
+
+    const longitude = Number(
+      navigationDestination.longitude
+    );
+
+    const destinationKey = [
+      navigationDestination.id ?? "external",
+      latitude,
+      longitude,
+    ].join(":");
+
+    if (
+      processedDestinationRef.current ===
+      destinationKey
+    ) {
+      return;
+    }
+
+    processedDestinationRef.current =
+      destinationKey;
+
+    handleGetDirections({
+      ...navigationDestination,
+      latitude,
+      longitude,
+    });
+
+    // Only react to a new destination.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigationDestination]);
+
+  // ==========================================================
+  // START / STOP NAVIGATION
+  // ==========================================================
+
+  function handleStartNavigation() {
+    if (
+      !activeRoute ||
+      routeLoadingRef.current
+    ) {
+      return;
+    }
+
+    navigationSessionRef.current += 1;
+
+    setRerouteError("");
+    setIsNavigating(true);
+  }
+
+  function handleStopNavigation() {
+    navigationSessionRef.current += 1;
+
+    // Invalidate an unfinished rerouting request.
+    if (reroutingRef.current) {
+      routeRequestIdRef.current += 1;
+
+      reroutingRef.current = false;
+      routeLoadingRef.current = false;
+
+      setIsRerouting(false);
+      setRouteLoading(false);
+    }
+
+    setIsNavigating(false);
+    setRerouteError("");
+
+    stopTracking();
+  }
+
+  // ==========================================================
+  // CLEAR ROUTE
+  // ==========================================================
+
+  function handleClearRoute() {
+    navigationSessionRef.current += 1;
+    routeRequestIdRef.current += 1;
+
+    reroutingRef.current = false;
+    routeLoadingRef.current = false;
+
+    lastRerouteAtRef.current = 0;
+    lastRerouteFixRef.current = null;
+
+    setRouteLoading(false);
+    setIsRerouting(false);
+
+    setActiveRoute(null);
+    setIsNavigating(false);
+
+    setRouteError("");
+    setRerouteError("");
+
+    currentDestinationRef.current = null;
+    destinationNameRef.current = "Selected destination";
+    setDestinationName("Selected destination");
+
+    stopTracking();
+  }
+
+  // ==========================================================
+  // SHARE DIRECTIONS WITH THE EXISTING SIDEBAR
+  // ==========================================================
+
+  // Keep navigation controls available without moving routing state
+  // out of the map. This preserves GPS and automatic rerouting.
+  if (navigationActionsRef) {
+    navigationActionsRef.current = {
+      clearRoute: handleClearRoute,
+      changeMode: handleModeChange,
+      startNavigation: handleStartNavigation,
+      stopNavigation: handleStopNavigation,
+    };
+  }
+
+  const lastDirectionsSnapshotRef = useRef(null);
+
+  useEffect(() => {
+    if (!onDirectionsChange) return;
+
+    const visible = Boolean(activeRoute || routeLoading);
+    const snapshot = visible
+      ? {
+          modes,
+          selectedMode,
+          route: activeRoute,
+          routeLoading,
+          modesLoading,
+          isNavigating,
+          isTracking,
+          liveLocation,
+          locationError,
+          navigation,
+          destinationName,
+          onClearRoute: handleClearRoute,
+          onModeChange: handleModeChange,
+          onStartNavigation: handleStartNavigation,
+          onStopNavigation: handleStopNavigation,
+        }
+      : null;
+
+    // Compare content, not object identities, to avoid parent/map
+    // render loops when hooks return new objects on each render.
+    const signature = JSON.stringify(snapshot);
+    if (signature !== lastDirectionsSnapshotRef.current) {
+      lastDirectionsSnapshotRef.current = signature;
+      onDirectionsChange(snapshot);
+    }
+  });
+
+  // ==========================================================
+  // MAP LOCATION VALIDATION
+  // ==========================================================
+
   if (!location) return null;
 
   const latitude = Number(location.latitude);
   const longitude = Number(location.longitude);
 
-  if (
-    !Number.isFinite(latitude) ||
-    !Number.isFinite(longitude)
-  ) {
+  if (!isValidCoordinates(latitude, longitude)) {
     return null;
   }
 
   const position = [latitude, longitude];
 
+  // Preserve the original marker outside navigation.
+  const displayedUserLocation =
+    isNavigating && isTracking && liveLocation
+      ? liveLocation
+      : userLocation;
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
   return (
-    <>
-      <style>{mapStyles}</style>
+    <div
+      className="position-relative w-100 h-100"
+      style={{ minHeight: 400 }}
+    >
+      {/* ======================================================
+          LEAFLET MAP
+      ====================================================== */}
 
       <MapContainer
-        className="nearsport-map"
+        className="w-100 h-100 position-absolute top-0 start-0"
         center={position}
         zoom={15}
         scrollWheelZoom={true}
         zoomControl={false}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          background: "#eef2f2",
-        }}
       >
         {/* OPENSTREETMAP TILES */}
+
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* MAP CLICK EVENTS */}
+        {/* ACTIVE ROUTE */}
+
+        <RouteLayer route={activeRoute} />
+
+        {/* LIVE NAVIGATION CAMERA */}
+
+        <NavigationCamera
+          location={liveLocation}
+          enabled={isNavigating && isTracking}
+        />
+
+        {/* MAP CLICK HANDLER */}
+
         <MapClickHandler
           onClose={handleClosePlaceCard}
           isSelectingSpot={isSelectingSpot}
@@ -1541,30 +1328,50 @@ function NearSpotMap({
         />
 
         {/* LOCATION CONTROLLER */}
-        <MapLocationController location={location} />
 
-        {/* EXTERNAL PLACE DISCOVERY */}
+        <MapLocationController
+          location={location}
+          navigationActive={
+            isNavigating || routeLoading
+          }
+        />
+
+        {/* EXTERNAL OSM DISCOVERY */}
+
         <ExternalPlaceDiscovery
           onPlacesChange={setExternalPlaces}
         />
 
         {/* MAP CONTROLS */}
-        <MapControls onMyLocation={onMyLocation} />
 
-        {/* USER LOCATION */}
-        {userLocation && (
-          <UserLocationMarker location={userLocation} />
+        <MapControls
+          onMyLocation={onMyLocation}
+        />
+
+        {/* USER LOCATION / NAVIGATION ARROW */}
+
+        {displayedUserLocation && (
+          <UserLocationMarker
+            location={displayedUserLocation}
+            isNavigating={
+              isNavigating && isTracking
+            }
+          />
         )}
 
-        {/* APPROVED HIDDENSPOTS */}
+        {/* APPROVED SPOTS */}
+
         {spots.map((spot) => (
           <SpotMarker
             key={spot.id}
             spot={spot}
+            onGetDirections={handleGetDirections}
+            routeLoading={routeLoading}
           />
         ))}
 
-        {/* OPENSTREETMAP PLACES */}
+        {/* EXTERNAL OSM MARKERS */}
+
         {externalPlaces.map((place) => (
           <ExternalPlaceMarker
             key={`${place.osm_type}-${place.osm_id}`}
@@ -1573,7 +1380,8 @@ function NearSpotMap({
           />
         ))}
 
-        {/* NEW HIDDENSPOT TEMPORARY MARKER */}
+        {/* DRAGGABLE NEW SPOT MARKER */}
+
         {isSelectingSpot && selectedSpotLocation && (
           <Marker
             position={[
@@ -1585,11 +1393,12 @@ function NearSpotMap({
             zIndexOffset={1000}
             eventHandlers={{
               dragend: (event) => {
-                const position = event.target.getLatLng();
+                const markerPosition =
+                  event.target.getLatLng();
 
                 onSpotLocationSelect?.({
-                  latitude: position.lat,
-                  longitude: position.lng,
+                  latitude: markerPosition.lat,
+                  longitude: markerPosition.lng,
                 });
               },
             }}
@@ -1604,7 +1413,99 @@ function NearSpotMap({
         )}
       </MapContainer>
 
-      {/* SELECTED EXTERNAL PLACE DETAILS */}
+      {/* ======================================================
+          REROUTING STATUS
+      ====================================================== */}
+
+      {isNavigating && isRerouting && (
+        <div
+          className="position-absolute top-0 start-50 translate-middle-x mt-3 alert alert-info shadow-sm d-flex align-items-center gap-2"
+          style={{ zIndex: 1200 }}
+          role="status"
+        >
+          <span
+            className="spinner-border spinner-border-sm"
+            aria-hidden="true"
+          />
+          <span>Recalculating route...</span>
+        </div>
+      )}
+
+      {/* OFF-ROUTE STATUS */}
+
+      {isNavigating &&
+        isOffRoute &&
+        !isRerouting &&
+        !rerouteError && (
+          <div
+            className="position-absolute top-0 start-50 translate-middle-x mt-3 alert alert-warning shadow-sm"
+            style={{ zIndex: 1200 }}
+            role="status"
+          >
+            <i className="bi bi-exclamation-triangle me-2" />
+            Off route
+            {Number.isFinite(distanceFromRoute)
+              ? ` (${Math.round(distanceFromRoute)} m)`
+              : ""}
+            . Waiting to recalculate...
+          </div>
+        )}
+
+      {/* REROUTING ERROR */}
+
+      {isNavigating && rerouteError && (
+        <div
+          className="position-absolute top-0 start-50 translate-middle-x mt-3 alert alert-warning shadow-sm d-flex align-items-center gap-2"
+          style={{ zIndex: 1200 }}
+          role="alert"
+        >
+          <span>{rerouteError}</span>
+
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() => setRerouteError("")}
+            aria-label="Dismiss rerouting error"
+          />
+        </div>
+      )}
+
+      {/* TRAVEL MODE ERROR */}
+
+      {modesError && (activeRoute || routeLoading) && (
+        <div
+          className="position-absolute top-0 start-50 translate-middle-x mt-3 alert alert-warning shadow-sm"
+          style={{ zIndex: 1200 }}
+          role="alert"
+        >
+          Unable to load travel modes. Please try
+          refreshing the page.
+        </div>
+      )}
+
+      {/* ROUTE ERROR */}
+
+      {routeError && (
+        <div
+          className="position-absolute bottom-0 start-50 translate-middle-x mb-5 alert alert-danger shadow d-flex align-items-center gap-3"
+          style={{ zIndex: 1200 }}
+          role="alert"
+        >
+          <span>{routeError}</span>
+
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() => setRouteError("")}
+            aria-label="Dismiss error"
+          />
+        </div>
+      )}
+
+      {/* ======================================================
+          SELECTED EXTERNAL PLACE CARD
+      ====================================================== */}
+
       {selectedExternalPlace && (
         <SelectedExternalPlaceCard
           key={
@@ -1613,9 +1514,11 @@ function NearSpotMap({
           }
           place={selectedExternalPlace}
           onClose={handleClosePlaceCard}
+          onGetDirections={handleGetDirections}
+          routeLoading={routeLoading}
         />
       )}
-    </>
+    </div>
   );
 }
 

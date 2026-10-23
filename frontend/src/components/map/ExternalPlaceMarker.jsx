@@ -1,5 +1,5 @@
 
-import { Marker, Popup } from "react-leaflet";
+import { Marker } from "react-leaflet";
 import L from "leaflet";
 
 // ============================================================
@@ -8,6 +8,7 @@ import L from "leaflet";
 
 const externalPlaceIcon = L.divIcon({
   className: "nearsport-external-marker",
+
   html: `
     <div style="
       width: 13px;
@@ -16,36 +17,23 @@ const externalPlaceIcon = L.divIcon({
       border: 2px solid white;
       border-radius: 50%;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
     "></div>
   `,
+
   iconSize: [17, 17],
   iconAnchor: [8, 8],
-  popupAnchor: [0, -10],
 });
-
-// ============================================================
-// FORMAT CATEGORY
-// ============================================================
-
-function formatCategory(category) {
-  if (!category) {
-    return "Place";
-  }
-
-  return category
-    .split(":")
-    .pop()
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase()
-    );
-}
 
 // ============================================================
 // EXTERNAL PLACE MARKER
 // ============================================================
 
 function ExternalPlaceMarker({ place, onPlaceClick }) {
+  // ==========================================================
+  // VALIDATE PLACE
+  // ==========================================================
+
   if (!place) {
     return null;
   }
@@ -62,80 +50,42 @@ function ExternalPlaceMarker({ place, onPlaceClick }) {
 
   const position = [latitude, longitude];
 
-  // ----------------------------------------------------------
+  // ==========================================================
   // HANDLE MARKER CLICK
-  // ----------------------------------------------------------
+  // ==========================================================
 
-  const handleMarkerClick = (event) => {
-    // Prevent this click from also closing the place card
-    // through the parent map's click handler.
-    if (event.originalEvent) {
-      L.DomEvent.stopPropagation(event.originalEvent);
-    }
+  function handleMarkerClick() {
+    console.log(
+      "MARKER CLICKED:",
+      place.name,
+      place
+    );
 
     if (typeof onPlaceClick === "function") {
       onPlaceClick(place);
+    } else {
+      console.error(
+        "ExternalPlaceMarker: onPlaceClick is missing."
+      );
     }
-  };
+  }
+
+  // ==========================================================
+  // RENDER MARKER
+  // ==========================================================
 
   return (
     <Marker
       position={position}
       icon={externalPlaceIcon}
+      bubblingMouseEvents={false}
       eventHandlers={{
         click: handleMarkerClick,
       }}
-    >
-      <Popup>
-        <div
-          style={{
-            minWidth: "190px",
-            maxWidth: "250px",
-          }}
-        >
-          <strong
-            style={{
-              fontSize: "14px",
-              color: "#263639",
-            }}
-          >
-            {place.name}
-          </strong>
-
-          <p
-            style={{
-              margin: "7px 0 4px",
-              fontSize: "12px",
-              color: "#10a37f",
-            }}
-          >
-            {formatCategory(place.category)}
-          </p>
-
-          {place.address && (
-            <p
-              style={{
-                margin: "4px 0",
-                fontSize: "12px",
-                color: "#64748b",
-              }}
-            >
-              {place.address}
-            </p>
-          )}
-
-          <small
-            style={{
-              display: "block",
-              marginTop: "8px",
-              color: "#94a3b8",
-            }}
-          >
-            Place data © OpenStreetMap contributors
-          </small>
-        </div>
-      </Popup>
-    </Marker>
+      title={place.name || "Open place details"}
+      keyboard={true}
+      riseOnHover={true}
+    />
   );
 }
 

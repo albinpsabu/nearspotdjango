@@ -1,6 +1,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+
 import api from "../../services/api";
 import { SpotReviews } from "../../components/spots/SpotReviews";
 
@@ -12,7 +13,10 @@ const API_BASE =
   import.meta.env.VITE_API_URL ||
   "http://127.0.0.1:8000/api";
 
-const API_ORIGIN = new URL(API_BASE, window.location.origin).origin;
+const API_ORIGIN = new URL(
+  API_BASE,
+  window.location.origin
+).origin;
 
 const cardStyle = {
   borderRadius: "22px",
@@ -43,7 +47,10 @@ const secondaryButtonStyle = {
 // ============================================================
 
 function getMediaUrl(media) {
-  const rawUrl = media?.url || media?.file || media?.file_url;
+  const rawUrl =
+    media?.url ||
+    media?.file ||
+    media?.file_url;
 
   if (!rawUrl || typeof rawUrl !== "string") {
     return null;
@@ -57,7 +64,9 @@ function getMediaUrl(media) {
 }
 
 function getMediaType(media) {
-  return String(media?.media_type || "").toUpperCase();
+  return String(
+    media?.media_type || ""
+  ).toUpperCase();
 }
 
 function formatDistance(meters) {
@@ -90,11 +99,16 @@ function ImageViewer({
   spotName,
 }) {
   const previous = useCallback(() => {
-    onChange((activeIndex - 1 + images.length) % images.length);
+    onChange(
+      (activeIndex - 1 + images.length) %
+        images.length
+    );
   }, [activeIndex, images.length, onChange]);
 
   const next = useCallback(() => {
-    onChange((activeIndex + 1) % images.length);
+    onChange(
+      (activeIndex + 1) % images.length
+    );
   }, [activeIndex, images.length, onChange]);
 
   useEffect(() => {
@@ -103,25 +117,46 @@ function ImageViewer({
         onClose();
       }
 
-      if (event.key === "ArrowLeft" && images.length > 1) {
+      if (
+        event.key === "ArrowLeft" &&
+        images.length > 1
+      ) {
         previous();
       }
 
-      if (event.key === "ArrowRight" && images.length > 1) {
+      if (
+        event.key === "ArrowRight" &&
+        images.length > 1
+      ) {
         next();
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
 
-    const previousOverflow = document.body.style.overflow;
+    const previousOverflow =
+      document.body.style.overflow;
+
     document.body.style.overflow = "hidden";
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+
+      document.body.style.overflow =
+        previousOverflow;
     };
-  }, [onClose, previous, next, images.length]);
+  }, [
+    onClose,
+    previous,
+    next,
+    images.length,
+  ]);
 
   const currentImage = images[activeIndex];
 
@@ -146,6 +181,7 @@ function ImageViewer({
         padding: "65px 55px",
       }}
     >
+      {/* CLOSE VIEWER */}
       <button
         type="button"
         className="btn btn-dark position-absolute"
@@ -161,6 +197,7 @@ function ImageViewer({
         <i className="bi bi-x-lg" />
       </button>
 
+      {/* IMAGE COUNTER */}
       <div
         className="position-absolute text-white"
         style={{
@@ -173,6 +210,7 @@ function ImageViewer({
         {activeIndex + 1} / {images.length}
       </div>
 
+      {/* PREVIOUS IMAGE */}
       {images.length > 1 && (
         <button
           type="button"
@@ -193,10 +231,13 @@ function ImageViewer({
         </button>
       )}
 
+      {/* CURRENT IMAGE */}
       <img
         src={currentImage.url}
         alt={`${spotName} photo ${activeIndex + 1}`}
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) =>
+          event.stopPropagation()
+        }
         style={{
           maxWidth: "100%",
           maxHeight: "85vh",
@@ -205,6 +246,7 @@ function ImageViewer({
         }}
       />
 
+      {/* NEXT IMAGE */}
       {images.length > 1 && (
         <button
           type="button"
@@ -236,9 +278,9 @@ function SpotDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // ============================================================
+  // ==========================================================
   // STATE
-  // ============================================================
+  // ==========================================================
 
   const [spot, setSpot] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -247,12 +289,15 @@ function SpotDetails() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [viewerIndex, setViewerIndex] = useState(null);
-  const [notification, setNotification] = useState("");
+  const [viewerIndex, setViewerIndex] =
+    useState(null);
 
-  // ============================================================
+  const [notification, setNotification] =
+    useState("");
+
+  // ==========================================================
   // FETCH SPOT DETAILS
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     let active = true;
@@ -265,19 +310,26 @@ function SpotDetails() {
       setViewerIndex(null);
 
       try {
-        const response = await api.get(`/spots/${id}/`);
+        const response = await api.get(
+          `/spots/${id}/`
+        );
 
         if (active) {
           setSpot(response.data);
         }
       } catch (err) {
-        console.error("Spot details error:", err);
+        console.error(
+          "Spot details error:",
+          err
+        );
 
         if (active) {
           if (err.response?.status === 404) {
             setError("Spot not found.");
           } else {
-            setError("Unable to load spot details.");
+            setError(
+              "Unable to load spot details."
+            );
           }
         }
       } finally {
@@ -294,55 +346,69 @@ function SpotDetails() {
     };
   }, [id]);
 
-  // ============================================================
+  // ==========================================================
   // CHECK SAVED STATUS
-  // ============================================================
+  // ==========================================================
 
-  const checkSavedStatus = useCallback(async () => {
-    try {
-      const response = await api.get("/spots/saved/");
-      const data = response.data;
+  const checkSavedStatus =
+    useCallback(async () => {
+      try {
+        const response = await api.get(
+          "/spots/saved/"
+        );
 
-      const savedSpots = Array.isArray(data)
-        ? data
-        : data?.results || [];
+        const data = response.data;
 
-      const isSaved = savedSpots.some((item) => {
-        const savedSpotId =
-          item.spot?.id ??
-          item.spot?.spot_id ??
-          item.spot_id ??
-          (typeof item.spot === "number" ? item.spot : null);
+        const savedSpots = Array.isArray(data)
+          ? data
+          : data?.results || [];
 
-        return String(savedSpotId) === String(id);
-      });
+        const isSaved = savedSpots.some(
+          (item) => {
+            const savedSpotId =
+              item.spot?.id ??
+              item.spot?.spot_id ??
+              item.spot_id ??
+              (typeof item.spot === "number"
+                ? item.spot
+                : null);
 
-      setSaved(isSaved);
-    } catch (err) {
-      if (
-        err.response?.status !== 401 &&
-        err.response?.status !== 403
-      ) {
-        console.error("Saved status error:", err);
+            return (
+              String(savedSpotId) ===
+              String(id)
+            );
+          }
+        );
+
+        setSaved(isSaved);
+      } catch (err) {
+        if (
+          err.response?.status !== 401 &&
+          err.response?.status !== 403
+        ) {
+          console.error(
+            "Saved status error:",
+            err
+          );
+        }
       }
-    }
-  }, [id]);
+    }, [id]);
 
   useEffect(() => {
     checkSavedStatus();
   }, [checkSavedStatus]);
 
-  // ============================================================
+  // ==========================================================
   // NOTIFICATIONS
-  // ============================================================
+  // ==========================================================
 
   const showNotification = (message) => {
     setNotification(message);
   };
 
-  // ============================================================
+  // ==========================================================
   // SAVE / UNSAVE
-  // ============================================================
+  // ==========================================================
 
   const handleSave = async () => {
     if (saving) {
@@ -353,41 +419,67 @@ function SpotDetails() {
 
     try {
       if (saved) {
-        await api.delete(`/spots/${id}/save/`);
+        await api.delete(
+          `/spots/${id}/save/`
+        );
+
         setSaved(false);
-        showNotification("Spot removed from saved places.");
+
+        showNotification(
+          "Spot removed from saved places."
+        );
       } else {
-        await api.post(`/spots/${id}/save/`);
+        await api.post(
+          `/spots/${id}/save/`
+        );
+
         setSaved(true);
-        showNotification("Spot saved successfully.");
+
+        showNotification(
+          "Spot saved successfully."
+        );
       }
     } catch (err) {
       const status = err.response?.status;
 
-      if (status === 401 || status === 403) {
+      if (
+        status === 401 ||
+        status === 403
+      ) {
         showNotification(
           "Please sign in with a user account to save spots."
         );
       } else if (
         status === 400 &&
-        String(err.response?.data?.detail || "")
+        String(
+          err.response?.data?.detail || ""
+        )
           .toLowerCase()
           .includes("already saved")
       ) {
         setSaved(true);
-        showNotification("This spot is already saved.");
+
+        showNotification(
+          "This spot is already saved."
+        );
       } else {
-        console.error("Save spot error:", err);
-        showNotification("Unable to update saved spot.");
+        console.error(
+          "Save spot error:",
+          err
+        );
+
+        showNotification(
+          "Unable to update saved spot."
+        );
       }
     } finally {
       setSaving(false);
     }
   };
 
-  // ============================================================
+  // ==========================================================
   // SHARE SPOT
-  // ============================================================
+  // ==========================================================
 
   const handleShare = async () => {
     const url = window.location.href;
@@ -396,32 +488,129 @@ function SpotDetails() {
       if (navigator.share) {
         await navigator.share({
           title: spot?.name || "NearSpot",
-          text: `Check out ${spot?.name || "this spot"} on NearSpot!`,
+          text:
+            `Check out ${spot?.name || "this spot"} ` +
+            "on NearSpot!",
           url,
         });
 
         return;
       }
 
-      await navigator.clipboard.writeText(url);
-      showNotification("Spot link copied to clipboard.");
+      await navigator.clipboard.writeText(
+        url
+      );
+
+      showNotification(
+        "Spot link copied to clipboard."
+      );
     } catch (err) {
       if (err.name !== "AbortError") {
-        console.error("Share error:", err);
-        showNotification("Unable to share this spot.");
+        console.error(
+          "Share error:",
+          err
+        );
+
+        showNotification(
+          "Unable to share this spot."
+        );
       }
     }
   };
 
-  // ============================================================
+  // ==========================================================
+  // NEW: VIEW ON MAP
+  // ==========================================================
+
+  // Opens the main NearSpot map with this HiddenSpot selected.
+  // This action does not calculate a road route.
+  const handleViewOnMap = () => {
+    if (!spot) return;
+
+    const latitude = Number(spot.latitude);
+    const longitude = Number(spot.longitude);
+
+    if (
+      spot.latitude == null ||
+      spot.longitude == null ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    ) {
+      showNotification(
+        "This spot has invalid coordinates."
+      );
+      return;
+    }
+
+    navigate("/", {
+      state: {
+        selectedSpot: {
+          id: spot.id,
+          name: spot.name,
+          latitude,
+          longitude,
+        },
+      },
+    });
+  };
+
+  // ==========================================================
+  // NEW: GET DIRECTIONS
+  // ==========================================================
+
+  // Sends the HiddenSpot's coordinates to the main map.
+  //
+  // NearSpotMap will later receive this destination and call:
+  // POST /api/navigation/routes/
+  //
+  // The Django API returns GeoJSON, which RouteLayer displays.
+  const handleGetDirections = () => {
+    if (!spot) return;
+
+    const latitude = Number(spot.latitude);
+    const longitude = Number(spot.longitude);
+
+    if (
+      spot.latitude == null ||
+      spot.longitude == null ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    ) {
+      showNotification(
+        "This spot has invalid coordinates."
+      );
+      return;
+    }
+
+    // Navigate to the main map and carry the destination.
+    // The receiving map page must read this Router state.
+    navigate("/", {
+      state: {
+        navigationDestination: {
+          id: spot.id,
+          name: spot.name,
+          latitude,
+          longitude,
+        },
+      },
+    });
+  };
+
+  // ==========================================================
   // LOADING STATE
-  // ============================================================
+  // ==========================================================
 
   if (loading) {
     return (
       <div
         className="min-vh-100 d-flex align-items-center justify-content-center"
-        style={{ background: "#f4f8f7" }}
+        style={{
+          background: "#f4f8f7",
+        }}
       >
         <div className="text-center">
           <div
@@ -449,15 +638,17 @@ function SpotDetails() {
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // ERROR STATE
-  // ============================================================
+  // ==========================================================
 
   if (error || !spot) {
     return (
       <div
         className="min-vh-100 d-flex align-items-center justify-content-center px-3"
-        style={{ background: "#f4f8f7" }}
+        style={{
+          background: "#f4f8f7",
+        }}
       >
         <div
           className="bg-white text-center"
@@ -466,7 +657,8 @@ function SpotDetails() {
             maxWidth: "430px",
             padding: "35px 28px",
             borderRadius: "24px",
-            boxShadow: "0 15px 45px rgba(25,45,48,0.10)",
+            boxShadow:
+              "0 15px 45px rgba(25,45,48,0.10)",
           }}
         >
           <div
@@ -502,7 +694,8 @@ function SpotDetails() {
               lineHeight: "1.6",
             }}
           >
-            This spot may have been removed or is no longer available.
+            This spot may have been removed
+            or is no longer available.
           </p>
 
           <button
@@ -518,14 +711,19 @@ function SpotDetails() {
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // PREPARE SPOT DATA
-  // ============================================================
+  // ==========================================================
 
-  const media = Array.isArray(spot.media) ? spot.media : [];
+  const media = Array.isArray(spot.media)
+    ? spot.media
+    : [];
 
   const imageMedia = media
-    .filter((item) => getMediaType(item) === "IMAGE")
+    .filter(
+      (item) =>
+        getMediaType(item) === "IMAGE"
+    )
     .map((item) => ({
       ...item,
       url: getMediaUrl(item),
@@ -533,27 +731,40 @@ function SpotDetails() {
     .filter((item) => item.url);
 
   const videoMedia = media
-    .filter((item) => getMediaType(item) === "VIDEO")
+    .filter(
+      (item) =>
+        getMediaType(item) === "VIDEO"
+    )
     .map((item) => ({
       ...item,
       url: getMediaUrl(item),
     }))
     .filter((item) => item.url);
 
-  const mainImage = imageMedia[0]?.url || null;
-  const distance = formatDistance(spot.distance_meters);
+  const mainImage =
+    imageMedia[0]?.url || null;
+
+  const distance = formatDistance(
+    spot.distance_meters
+  );
 
   const coordinatesAvailable =
     spot.latitude !== undefined &&
     spot.latitude !== null &&
     spot.longitude !== undefined &&
     spot.longitude !== null &&
-    Number.isFinite(Number(spot.latitude)) &&
-    Number.isFinite(Number(spot.longitude));
+    Number.isFinite(
+      Number(spot.latitude)
+    ) &&
+    Number.isFinite(
+      Number(spot.longitude)
+    ) &&
+    Math.abs(Number(spot.latitude)) <= 90 &&
+    Math.abs(Number(spot.longitude)) <= 180;
 
-  // ============================================================
+  // ==========================================================
   // MAIN UI
-  // ============================================================
+  // ==========================================================
 
   return (
     <div
@@ -571,9 +782,11 @@ function SpotDetails() {
         className="position-sticky top-0"
         style={{
           zIndex: 1000,
-          background: "rgba(255,255,255,0.92)",
+          background:
+            "rgba(255,255,255,0.92)",
           backdropFilter: "blur(12px)",
-          borderBottom: "1px solid rgba(30,50,55,0.07)",
+          borderBottom:
+            "1px solid rgba(30,50,55,0.07)",
         }}
       >
         <div
@@ -583,12 +796,14 @@ function SpotDetails() {
             maxWidth: "1100px",
           }}
         >
+          {/* BACK TO MAP */}
           <button
             type="button"
             className="btn btn-light d-flex align-items-center gap-2"
             onClick={() => navigate("/")}
             style={{
-              border: "1px solid rgba(30,50,55,0.08)",
+              border:
+                "1px solid rgba(30,50,55,0.08)",
               borderRadius: "12px",
               color: "#263639",
               fontWeight: 700,
@@ -597,11 +812,13 @@ function SpotDetails() {
             }}
           >
             <i className="bi bi-arrow-left" />
+
             <span className="d-none d-sm-inline">
               Back to Map
             </span>
           </button>
 
+          {/* BRAND */}
           <div
             style={{
               color: "#10bfa0",
@@ -613,25 +830,39 @@ function SpotDetails() {
             NearSpot
           </div>
 
+          {/* TOP ACTIONS */}
           <div className="d-flex align-items-center gap-2">
             <button
               type="button"
               className="btn btn-light"
-              title={saved ? "Unsave spot" : "Save spot"}
-              aria-label={saved ? "Unsave spot" : "Save spot"}
+              title={
+                saved
+                  ? "Unsave spot"
+                  : "Save spot"
+              }
+              aria-label={
+                saved
+                  ? "Unsave spot"
+                  : "Save spot"
+              }
               onClick={handleSave}
               disabled={saving}
               style={{
                 width: "40px",
                 height: "40px",
                 borderRadius: "12px",
-                border: "1px solid rgba(30,50,55,0.08)",
-                color: saved ? "#10aa8e" : "#344548",
+                border:
+                  "1px solid rgba(30,50,55,0.08)",
+                color: saved
+                  ? "#10aa8e"
+                  : "#344548",
               }}
             >
               <i
                 className={`bi ${
-                  saved ? "bi-heart-fill" : "bi-heart"
+                  saved
+                    ? "bi-heart-fill"
+                    : "bi-heart"
                 }`}
               />
             </button>
@@ -646,7 +877,8 @@ function SpotDetails() {
                 width: "40px",
                 height: "40px",
                 borderRadius: "12px",
-                border: "1px solid rgba(30,50,55,0.08)",
+                border:
+                  "1px solid rgba(30,50,55,0.08)",
               }}
             >
               <i className="bi bi-share" />
@@ -677,16 +909,20 @@ function SpotDetails() {
             minHeight: "500px",
             borderRadius: "28px",
             overflow: "hidden",
-            boxShadow: "0 20px 60px rgba(25,45,48,0.16)",
+            boxShadow:
+              "0 20px 60px rgba(25,45,48,0.16)",
             background:
               "linear-gradient(135deg, #e9f8f4, #f5f8f8)",
           }}
         >
+          {/* HERO IMAGE */}
           {mainImage ? (
             <img
               src={mainImage}
               alt={spot.name}
-              onClick={() => setViewerIndex(0)}
+              onClick={() =>
+                setViewerIndex(0)
+              }
               style={{
                 position: "absolute",
                 inset: 0,
@@ -696,7 +932,8 @@ function SpotDetails() {
                 cursor: "pointer",
               }}
               onError={(event) => {
-                event.currentTarget.style.display = "none";
+                event.currentTarget.style.display =
+                  "none";
               }}
             />
           ) : (
@@ -714,7 +951,7 @@ function SpotDetails() {
             </div>
           )}
 
-          {/* Dark gradient */}
+          {/* DARK GRADIENT */}
           <div
             style={{
               position: "absolute",
@@ -725,7 +962,7 @@ function SpotDetails() {
             }}
           />
 
-          {/* Image count */}
+          {/* IMAGE COUNT */}
           {imageMedia.length > 0 && (
             <div
               className="position-absolute"
@@ -734,7 +971,8 @@ function SpotDetails() {
                 right: "18px",
                 padding: "8px 12px",
                 borderRadius: "12px",
-                background: "rgba(20,30,32,0.55)",
+                background:
+                  "rgba(20,30,32,0.55)",
                 backdropFilter: "blur(8px)",
                 color: "#ffffff",
                 fontSize: "12px",
@@ -742,12 +980,15 @@ function SpotDetails() {
               }}
             >
               <i className="bi bi-images me-2" />
+
               {imageMedia.length}{" "}
-              {imageMedia.length === 1 ? "photo" : "photos"}
+              {imageMedia.length === 1
+                ? "photo"
+                : "photos"}
             </div>
           )}
 
-          {/* Hero content */}
+          {/* HERO CONTENT */}
           <div
             className="position-absolute"
             style={{
@@ -763,24 +1004,28 @@ function SpotDetails() {
               style={{
                 padding: "7px 11px",
                 borderRadius: "20px",
-                background: "rgba(16,191,160,0.90)",
+                background:
+                  "rgba(16,191,160,0.90)",
                 fontSize: "11px",
                 fontWeight: 800,
                 letterSpacing: "0.3px",
                 marginBottom: "12px",
               }}
             >
-              {spot.category_name || "Hidden Spot"}
+              {spot.category_name ||
+                "Hidden Spot"}
             </div>
 
             <h1
               style={{
                 margin: 0,
-                fontSize: "clamp(28px, 5vw, 46px)",
+                fontSize:
+                  "clamp(28px, 5vw, 46px)",
                 fontWeight: 900,
                 lineHeight: "1.05",
                 letterSpacing: "-1px",
-                textShadow: "0 3px 20px rgba(0,0,0,0.25)",
+                textShadow:
+                  "0 3px 20px rgba(0,0,0,0.25)",
               }}
             >
               {spot.name}
@@ -804,7 +1049,9 @@ function SpotDetails() {
                 <span>
                   <i className="bi bi-images me-1" />
                   {imageMedia.length}{" "}
-                  {imageMedia.length === 1 ? "image" : "images"}
+                  {imageMedia.length === 1
+                    ? "image"
+                    : "images"}
                 </span>
               )}
 
@@ -812,7 +1059,9 @@ function SpotDetails() {
                 <span>
                   <i className="bi bi-camera-video me-1" />
                   {videoMedia.length}{" "}
-                  {videoMedia.length === 1 ? "video" : "videos"}
+                  {videoMedia.length === 1
+                    ? "video"
+                    : "videos"}
                 </span>
               )}
 
@@ -821,7 +1070,8 @@ function SpotDetails() {
                   style={{
                     padding: "5px 9px",
                     borderRadius: "10px",
-                    background: "rgba(255,255,255,0.16)",
+                    background:
+                      "rgba(255,255,255,0.16)",
                   }}
                 >
                   {spot.status}
@@ -840,11 +1090,15 @@ function SpotDetails() {
           style={cardStyle}
         >
           <div className="row g-2">
-            <div className="col-12 col-md-6">
+            {/* VIEW ON MAP */}
+            <div className="col-12 col-md-3">
               <button
                 type="button"
                 className="btn w-100"
-                onClick={() => navigate("/")}
+                onClick={handleViewOnMap}
+                disabled={
+                  !coordinatesAvailable
+                }
                 style={primaryButtonStyle}
               >
                 <i className="bi bi-map me-2" />
@@ -852,6 +1106,26 @@ function SpotDetails() {
               </button>
             </div>
 
+            {/* NEW: GET DIRECTIONS */}
+            <div className="col-12 col-md-3">
+              <button
+                type="button"
+                className="btn w-100"
+                onClick={handleGetDirections}
+                disabled={
+                  !coordinatesAvailable
+                }
+                style={{
+                  ...primaryButtonStyle,
+                  background: "#2563eb",
+                }}
+              >
+                <i className="bi bi-sign-turn-right me-2" />
+                Get Directions
+              </button>
+            </div>
+
+            {/* SAVE / UNSAVE */}
             <div className="col-6 col-md-3">
               <button
                 type="button"
@@ -862,9 +1136,12 @@ function SpotDetails() {
               >
                 <i
                   className={`bi ${
-                    saved ? "bi-heart-fill" : "bi-heart"
+                    saved
+                      ? "bi-heart-fill"
+                      : "bi-heart"
                   } me-2`}
                 />
+
                 {saving
                   ? "Please wait..."
                   : saved
@@ -873,6 +1150,7 @@ function SpotDetails() {
               </button>
             </div>
 
+            {/* SHARE */}
             <div className="col-6 col-md-3">
               <button
                 type="button"
@@ -928,7 +1206,8 @@ function SpotDetails() {
                     fontSize: "13px",
                   }}
                 >
-                  No description available for this spot.
+                  No description available
+                  for this spot.
                 </p>
               )}
             </section>
@@ -950,6 +1229,7 @@ function SpotDetails() {
                 Spot information
               </h2>
 
+              {/* CATEGORY */}
               <div
                 className="d-flex justify-content-between align-items-center mt-4 pb-3"
                 style={{
@@ -974,10 +1254,12 @@ function SpotDetails() {
                     fontWeight: 800,
                   }}
                 >
-                  {spot.category_name || "Hidden Spot"}
+                  {spot.category_name ||
+                    "Hidden Spot"}
                 </span>
               </div>
 
+              {/* DISTANCE */}
               {distance && (
                 <div
                   className="d-flex justify-content-between align-items-center py-3"
@@ -1008,6 +1290,7 @@ function SpotDetails() {
                 </div>
               )}
 
+              {/* COORDINATES */}
               {coordinatesAvailable && (
                 <div className="pt-3">
                   <div
@@ -1029,8 +1312,13 @@ function SpotDetails() {
                       wordBreak: "break-word",
                     }}
                   >
-                    {Number(spot.latitude).toFixed(6)},{" "}
-                    {Number(spot.longitude).toFixed(6)}
+                    {Number(
+                      spot.latitude
+                    ).toFixed(6)}
+                    ,{" "}
+                    {Number(
+                      spot.longitude
+                    ).toFixed(6)}
                   </div>
                 </div>
               )}
@@ -1066,49 +1354,58 @@ function SpotDetails() {
                 }}
               >
                 {imageMedia.length}{" "}
-                {imageMedia.length === 1 ? "photo" : "photos"}{" "}
+                {imageMedia.length === 1
+                  ? "photo"
+                  : "photos"}{" "}
                 of this spot. Click to enlarge.
               </p>
             </div>
 
             <div className="row g-3 mt-1">
-              {imageMedia.map((media, index) => (
-                <div
-                  className="col-6 col-md-4 col-lg-3"
-                  key={media.id ?? index}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setViewerIndex(index)}
-                    aria-label={`View photo ${index + 1}`}
-                    style={{
-                      width: "100%",
-                      aspectRatio: "1 / 1",
-                      borderRadius: "15px",
-                      overflow: "hidden",
-                      background: "#edf4f2",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                    }}
+              {imageMedia.map(
+                (media, index) => (
+                  <div
+                    className="col-6 col-md-4 col-lg-3"
+                    key={
+                      media.id ?? index
+                    }
                   >
-                    <img
-                      src={media.url}
-                      alt={`${spot.name} photo ${index + 1}`}
-                      loading="lazy"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setViewerIndex(index)
+                      }
+                      aria-label={`View photo ${index + 1}`}
                       style={{
                         width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
+                        aspectRatio: "1 / 1",
+                        borderRadius: "15px",
+                        overflow: "hidden",
+                        background: "#edf4f2",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
                       }}
-                      onError={(event) => {
-                        event.currentTarget.style.display = "none";
-                      }}
-                    />
-                  </button>
-                </div>
-              ))}
+                    >
+                      <img
+                        src={media.url}
+                        alt={`${spot.name} photo ${index + 1}`}
+                        loading="lazy"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                        onError={(event) => {
+                          event.currentTarget.style.display =
+                            "none";
+                        }}
+                      />
+                    </button>
+                  </div>
+                )
+              )}
             </div>
           </section>
         )}
@@ -1139,38 +1436,45 @@ function SpotDetails() {
               }}
             >
               {videoMedia.length}{" "}
-              {videoMedia.length === 1 ? "video" : "videos"}{" "}
+              {videoMedia.length === 1
+                ? "video"
+                : "videos"}{" "}
               of this spot.
             </p>
 
             <div className="row g-3">
-              {videoMedia.map((media, index) => (
-                <div
-                  className="col-12 col-md-6"
-                  key={media.id ?? index}
-                >
-                  <video
-                    src={media.url}
-                    controls
-                    preload="metadata"
-                    playsInline
-                    style={{
-                      width: "100%",
-                      maxHeight: "350px",
-                      borderRadius: "15px",
-                      background: "#10191a",
-                    }}
+              {videoMedia.map(
+                (media, index) => (
+                  <div
+                    className="col-12 col-md-6"
+                    key={
+                      media.id ?? index
+                    }
                   >
-                    Your browser does not support video playback.
-                  </video>
-                </div>
-              ))}
+                    <video
+                      src={media.url}
+                      controls
+                      preload="metadata"
+                      playsInline
+                      style={{
+                        width: "100%",
+                        maxHeight: "350px",
+                        borderRadius: "15px",
+                        background: "#10191a",
+                      }}
+                    >
+                      Your browser does not
+                      support video playback.
+                    </video>
+                  </div>
+                )
+              )}
             </div>
           </section>
         )}
 
         {/* ====================================================
-            REVIEWS AND RATINGS - NEW SECTION
+            REVIEWS AND RATINGS
         ===================================================== */}
 
         <section
@@ -1204,15 +1508,18 @@ function SpotDetails() {
           IMAGE VIEWER
       ====================================================== */}
 
-      {viewerIndex !== null && imageMedia.length > 0 && (
-        <ImageViewer
-          images={imageMedia}
-          activeIndex={viewerIndex}
-          onChange={setViewerIndex}
-          onClose={() => setViewerIndex(null)}
-          spotName={spot.name}
-        />
-      )}
+      {viewerIndex !== null &&
+        imageMedia.length > 0 && (
+          <ImageViewer
+            images={imageMedia}
+            activeIndex={viewerIndex}
+            onChange={setViewerIndex}
+            onClose={() =>
+              setViewerIndex(null)
+            }
+            spotName={spot.name}
+          />
+        )}
 
       {/* ======================================================
           NOTIFICATION
@@ -1228,19 +1535,24 @@ function SpotDetails() {
             color: "#ffffff",
             borderRadius: "13px",
             padding: "13px 20px",
-            boxShadow: "0 10px 35px rgba(0,0,0,0.18)",
+            boxShadow:
+              "0 10px 35px rgba(0,0,0,0.18)",
             fontSize: "13px",
             fontWeight: 700,
             maxWidth: "90vw",
             textAlign: "center",
           }}
         >
-          <span className="me-3">{notification}</span>
+          <span className="me-3">
+            {notification}
+          </span>
 
           <button
             type="button"
             className="btn btn-sm text-white"
-            onClick={() => setNotification("")}
+            onClick={() =>
+              setNotification("")
+            }
             aria-label="Dismiss notification"
           >
             <i className="bi bi-x-lg" />

@@ -1,6 +1,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+  useLocation as useRouterLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import { useAuth } from "./context/AuthContext";
 import useLocation from "./hooks/useLocation";
@@ -28,12 +31,10 @@ const DEFAULT_LOCATION = {
 
 const LOCATION_FALLBACK_DELAY = 2500;
 const RECENT_SEARCHES_KEY = "nearspot_recent_searches";
-
-// Reduced from 104px to 80px.
 const TOP_BAR_HEIGHT = 80;
-
 const SIDEBAR_COLLAPSED_WIDTH = 76;
 const SIDEBAR_EXPANDED_WIDTH = 320;
+const DIRECTIONS_PANEL_WIDTH = 420;
 
 // ============================================================
 // HELPERS
@@ -46,9 +47,7 @@ function getApiErrorMessage(error) {
     return "Unable to complete the request. Please try again.";
   }
 
-  if (typeof data === "string") {
-    return data;
-  }
+  if (typeof data === "string") return data;
 
   if (data.detail || data.error) {
     return String(data.detail || data.error);
@@ -71,18 +70,38 @@ function getApiErrorMessage(error) {
 function loadRecentSearches() {
   try {
     const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
-
-    if (!saved) {
-      return [];
-    }
+    if (!saved) return [];
 
     const parsed = JSON.parse(saved);
-
     return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
   } catch (error) {
     console.warn("Unable to load recent searches:", error);
     return [];
   }
+}
+
+function validCoordinates(place) {
+  if (
+    !place ||
+    place.latitude == null ||
+    place.longitude == null
+  ) {
+    return null;
+  }
+
+  const latitude = Number(place.latitude);
+  const longitude = Number(place.longitude);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    Math.abs(latitude) > 90 ||
+    Math.abs(longitude) > 180
+  ) {
+    return null;
+  }
+
+  return { latitude, longitude };
 }
 
 // ============================================================
@@ -91,6 +110,17 @@ function loadRecentSearches() {
 
 function App() {
   const navigate = useNavigate();
+  const routerLocation = useRouterLocation();
+
+  // ============================================================
+  // DESTINATION FROM SPOT DETAILS
+  // ============================================================
+
+  const navigationDestination =
+    routerLocation.state?.navigationDestination ?? null;
+
+  const selectedMapSpot =
+    routerLocation.state?.selectedSpot ?? null;
 
   // ============================================================
   // AUTHENTICATION
@@ -154,16 +184,13 @@ function App() {
   // ============================================================
 
   const [isSelectingSpot, setIsSelectingSpot] = useState(false);
-
   const [selectedSpotLocation, setSelectedSpotLocation] =
     useState(null);
 
   const [showSpotForm, setShowSpotForm] = useState(false);
   const [spotCategories, setSpotCategories] = useState([]);
-
   const [categoriesLoading, setCategoriesLoading] =
     useState(false);
-
   const [categoriesError, setCategoriesError] = useState("");
   const [submittingSpot, setSubmittingSpot] = useState(false);
 
@@ -245,7 +272,7 @@ function App() {
   };
 
   // ============================================================
-  // LOAD CATEGORIES
+  // LOAD SPOT CATEGORIES
   // ============================================================
 
   useEffect(() => {
@@ -351,7 +378,7 @@ function App() {
   };
 
   // ============================================================
-  // LOCATION
+  // GPS LOCATION
   // ============================================================
 
   const {
@@ -362,7 +389,7 @@ function App() {
   } = useLocation();
 
   // ============================================================
-  // MAP STATE
+  // MAP AND DIRECTIONS STATE
   // ============================================================
 
   const [radius, setRadius] = useState(5000);
@@ -371,7 +398,75 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(false);
 
+  const [directionsVisible, setDirectionsVisible] =
+    useState(false);
+
+  const [directionsProps, setDirectionsProps] =
+    useState(null);
+
+  // Shared actions exposed by NearSpotMap.
+  const navigationActionsRef = useRef(null);
+
+  // Prevent old route snapshots from reopening a closed panel.
+  const directionsDismissedRef = useRef(false);
+
+  const handleDirectionsChange = useCallback(
+    (nextDirections) => {
+      setDirectionsProps(nextDirections);
+
+      if (!nextDirections) {
+        setDirectionsVisible(false);
+        directionsDismissedRef.current = false;
+        return;
+      }
+
+      if (!directionsDismissedRef.current) {
+        setDirectionsVisible(true);
+        setSidebarCollapsed(true);
+      }
+    },
+    []
+  );
+
+  const handleCloseDirectionsPanel = useCallback(() => {
+    directionsDismissedRef.current = true;
+
+    navigationActionsRef.current?.clearRoute?.();
+
+    setDirectionsVisible(false);
+    setDirectionsProps(null);
+  }, []);
+
+  const handleSidebarSectionSelect = useCallback(() => {
+    directionsDismissedRef.current = true;
+
+    navigationActionsRef.current?.clearRoute?.();
+
+    setDirectionsVisible(false);
+    setDirectionsProps(null);
+  }, []);
+
+  const handleSidebarToggle = useCallback(() => {
+    setSidebarCollapsed((previous) => !previous);
+  }, []);
+
   const hasSelectedPlaceRef = useRef(false);
+
+  // ============================================================
+  // CENTER MAP ON SELECTED DESTINATION
+  // ============================================================
+
+  useEffect(() => {
+    const destination =
+      navigationDestination || selectedMapSpot;
+
+    const coordinates = validCoordinates(destination);
+
+    if (!coordinates) return;
+
+    hasSelectedPlaceRef.current = true;
+    setMapLocation(coordinates);
+  }, [navigationDestination, selectedMapSpot]);
 
   // ============================================================
   // SEARCH STATE
@@ -384,7 +479,6 @@ function App() {
   const [recentSearches, setRecentSearches] =
     useState(loadRecentSearches);
 
-  // Save recent searches across refreshes.
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -396,7 +490,6 @@ function App() {
     }
   }, [recentSearches]);
 
-  // Remove an individual recent search.
   const handleRecentSearchRemove = useCallback((searchId) => {
     setRecentSearches((previous) =>
       previous.filter((item) => item.id !== searchId)
@@ -453,23 +546,9 @@ function App() {
 
   const handlePlaceSelect = useCallback(
     (selectedLocation) => {
-      if (!selectedLocation) return;
+      const coordinates = validCoordinates(selectedLocation);
 
-      const latitude = Number(selectedLocation.latitude);
-      const longitude = Number(selectedLocation.longitude);
-
-      if (
-        !Number.isFinite(latitude) ||
-        !Number.isFinite(longitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
-        return;
-      }
-
-      const coordinates = { latitude, longitude };
+      if (!coordinates) return;
 
       hasSelectedPlaceRef.current = true;
       setMapLocation(coordinates);
@@ -482,7 +561,7 @@ function App() {
   );
 
   // ============================================================
-  // GPS LOCATION
+  // GPS LOCATION BUTTON
   // ============================================================
 
   const handleMyLocation = useCallback(async () => {
@@ -497,19 +576,9 @@ function App() {
         return;
       }
 
-      const coordinates = {
-        latitude: Number(currentLocation.latitude),
-        longitude: Number(currentLocation.longitude),
-      };
+      const coordinates = validCoordinates(currentLocation);
 
-      if (
-        !Number.isFinite(coordinates.latitude) ||
-        !Number.isFinite(coordinates.longitude) ||
-        coordinates.latitude < -90 ||
-        coordinates.latitude > 90 ||
-        coordinates.longitude < -180 ||
-        coordinates.longitude > 180
-      ) {
+      if (!coordinates) {
         showMessage(
           "Invalid GPS coordinates received.",
           "danger"
@@ -536,14 +605,13 @@ function App() {
   }, [getCurrentLocation, isSelectingSpot, showMessage]);
 
   // ============================================================
-  // SEARCH USING OPENSTREETMAP NOMINATIM
+  // OPENSTREETMAP NOMINATIM SEARCH
   // ============================================================
 
   const handleSearch = async (event) => {
     event.preventDefault();
 
     const query = searchQuery.trim();
-
     if (!query || searchLoading) return;
 
     setSearchLoading(true);
@@ -605,10 +673,17 @@ function App() {
     }
   };
 
-  // Keep search aligned with sidebar collapse/expand.
+  // ============================================================
+  // SIDEBAR AND SEARCH DIMENSIONS
+  // ============================================================
+
   const sidebarWidth = sidebarCollapsed
     ? SIDEBAR_COLLAPSED_WIDTH
     : SIDEBAR_EXPANDED_WIDTH;
+
+  const leftContentWidth =
+    sidebarWidth +
+    (directionsVisible ? DIRECTIONS_PANEL_WIDTH : 0);
 
   // ============================================================
   // RENDER
@@ -641,6 +716,9 @@ function App() {
             isSelectingSpot={isSelectingSpot}
             selectedSpotLocation={selectedSpotLocation}
             onSpotLocationSelect={setSelectedSpotLocation}
+            navigationDestination={navigationDestination}
+            onDirectionsChange={handleDirectionsChange}
+            navigationActionsRef={navigationActionsRef}
           />
         ) : (
           <div className="w-100 h-100 d-flex align-items-center justify-content-center bg-light">
@@ -660,7 +738,6 @@ function App() {
 
       {/* ======================================================
           CONTINUOUS WHITE TOP BAR
-          Reduced height: 104px -> 80px
       ====================================================== */}
 
       <div
@@ -676,14 +753,17 @@ function App() {
       />
 
       {/* ======================================================
-          SIDEBAR
+          NEARSPOT SIDEBAR + DIRECTIONS PANEL
       ====================================================== */}
 
       <NearSpotSidebar
         collapsed={sidebarCollapsed}
-        onToggle={() =>
-          setSidebarCollapsed((previous) => !previous)
-        }
+        directionsVisible={directionsVisible}
+        directionsProps={directionsProps}
+        navigationActionsRef={navigationActionsRef}
+        onCloseDirections={handleCloseDirectionsPanel}
+        onSectionSelect={handleSidebarSectionSelect}
+        onToggle={handleSidebarToggle}
         radius={radius}
         onRadiusChange={setRadius}
         spots={nearbySpots}
@@ -700,7 +780,6 @@ function App() {
 
       {/* ======================================================
           SEARCH BAR
-          Moved upward to fit the 80px top bar.
       ====================================================== */}
 
       <div
@@ -708,11 +787,9 @@ function App() {
         style={{
           zIndex: 1050,
           top: "12px",
-          left: `${sidebarWidth + 20}px`,
-          width: sidebarCollapsed
-            ? "min(620px, calc(100vw - 376px))"
-            : "min(620px, calc(100vw - 620px))",
-          minWidth: "180px",
+          left: `${leftContentWidth + 20}px`,
+          width: `min(620px, max(0px, calc(100vw - ${leftContentWidth + 300}px)))`,
+          maxWidth: `calc(100vw - ${leftContentWidth + 24}px)`,
           transition: "left 0.3s ease, width 0.3s ease",
         }}
       >
@@ -761,8 +838,7 @@ function App() {
       </div>
 
       {/* ======================================================
-          ACCOUNT AND LOCATION CONTROLS
-          Aligned to the shorter top bar.
+          ACCOUNT AND GPS CONTROLS
       ====================================================== */}
 
       <div
@@ -1032,7 +1108,6 @@ function App() {
           role="status"
         >
           <i className="bi bi-info-circle" />
-
           <span>{actionMessage}</span>
 
           <button
