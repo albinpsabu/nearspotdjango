@@ -2,19 +2,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // ============================================================
+// CONFIGURATION
+// ============================================================
+
+const GPS_TIMEOUT_MS = 15000;
+const GPS_STALE_AFTER_MS = 20000;
+const GPS_CHECK_INTERVAL_MS = 5000;
+const MAX_ACCEPTABLE_ACCURACY_METERS = 100;
+
+// ============================================================
 // GPS ERROR HANDLING
 // ============================================================
 
 function getLocationError(error) {
   switch (error?.code) {
     case 1:
-      return "Location permission was denied.";
+      return "Location permission was denied. Enable location access to continue navigation.";
 
     case 2:
-      return "Your current location is unavailable.";
+      return "Your current location is unavailable. Waiting for GPS signal.";
 
     case 3:
-      return "Getting your location timed out.";
+      return "Getting your location timed out. Waiting for another GPS update.";
 
     default:
       return (
@@ -45,11 +54,25 @@ export default function useLiveNavigation() {
 
   const watchIdRef = useRef(null);
 
-  // Used to ignore callbacks from an old tracking session.
   const sessionRef = useRef(0);
 
-  // Prevent duplicate tracking sessions.
   const trackingRef = useRef(false);
+
+  const lastUpdateRef = useRef(null);
+
+  const gpsCheckIntervalRef = useRef(null);
+
+  // ----------------------------------------------------------
+  // CLEAR GPS MONITOR
+  // ----------------------------------------------------------
+
+  const clearGpsMonitor = useCallback(() => {
+    if (gpsCheckIntervalRef.current !== null) {
+      clearInterval(gpsCheckIntervalRef.current);
+
+      gpsCheckIntervalRef.current = null;
+    }
+  }, []);
 
   // ----------------------------------------------------------
   // STOP LIVE TRACKING
@@ -66,10 +89,18 @@ export default function useLiveNavigation() {
       watchIdRef.current = null;
     }
 
+    clearGpsMonitor();
+
     trackingRef.current = false;
 
+    lastUpdateRef.current = null;
+
     setIsTracking(false);
-  }, []);
+
+    setCurrentLocation(null);
+
+    setLocationError("");
+  }, [clearGpsMonitor]);
 
   // ----------------------------------------------------------
   // START LIVE TRACKING
@@ -85,6 +116,8 @@ export default function useLiveNavigation() {
         "Geolocation is not supported by this browser."
       );
 
+      setIsTracking(false);
+
       return;
     }
 
@@ -93,77 +126,176 @@ export default function useLiveNavigation() {
 
     trackingRef.current = true;
 
-    setLocationError("");
+    lastUpdateRef.current = Date.now();
 
-    const watchId = navigator.geolocation.watchPosition(
-      // ------------------------------------------------------
-      // GPS SUCCESS
-      // ------------------------------------------------------
-
-      (position) => {
-        if (sessionId !== sessionRef.current) {
-          return;
-        }
-
-        const {
-          latitude,
-          longitude,
-          accuracy,
-          heading,
-          speed,
-        } = position.coords;
-
-        if (
-          !Number.isFinite(latitude) ||
-          !Number.isFinite(longitude)
-        ) {
-          return;
-        }
-
-        setCurrentLocation({
-          latitude,
-          longitude,
-          accuracy,
-          heading,
-          speed,
-          timestamp: position.timestamp,
-        });
-
-        setLocationError("");
-      },
-
-      // ------------------------------------------------------
-      // GPS ERROR
-      // ------------------------------------------------------
-
-      (error) => {
-        if (sessionId !== sessionRef.current) {
-          return;
-        }
-
-        setLocationError(getLocationError(error));
-
-        // Permission denied: stop the tracking session.
-        if (error.code === 1) {
-          stopTracking();
-        }
-      },
-
-      // ------------------------------------------------------
-      // GPS OPTIONS
-      // ------------------------------------------------------
-
-      {
-        enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 15000,
-      }
-    );
-
-    watchIdRef.current = watchId;
+    setCurrentLocation(null);
 
     setIsTracking(true);
-  }, [stopTracking]);
+
+    setLocationError("");
+
+    // --------------------------------------------------------
+    // GPS SIGNAL MONITOR
+    // --------------------------------------------------------
+
+    clearGpsMonitor();
+
+    gpsCheckIntervalRef.current = setInterval(() => {
+      if (
+        sessionId !== sessionRef.current ||
+        !trackingRef.current
+      ) {
+        return;
+      }
+
+      const lastUpdate = lastUpdateRef.current;
+
+      if (!lastUpdate) {
+        return;
+      }
+
+      const elapsedTime = Date.now() - lastUpdate;
+
+      if (elapsedTime > GPS_STALE_AFTER_MS) {
+        setLocationError(
+          "GPS signal lost or delayed. Waiting for a new location update."
+        );
+
+        // Prevent navigation from using stale coordinates.
+        setCurrentLocation(null);
+      }
+    }, GPS_CHECK_INTERVAL_MS);
+
+    // --------------------------------------------------------
+    // WATCH GPS POSITION
+    // --------------------------------------------------------
+
+    try {
+      const watchId = navigator.geolocation.watchPosition(
+        // ----------------------------------------------------
+        // GPS SUCCESS
+        // ----------------------------------------------------
+
+        (position) => {
+          if (sessionId !== sessionRef.current) {
+            return;
+          }
+
+          const {
+            latitude,
+            longitude,
+            accuracy,
+            heading,
+            speed,
+          } = position.coords;
+
+          if (
+            !Number.isFinite(latitude) ||
+            !Number.isFinite(longitude) ||
+            Math.abs(latitude) > 90 ||
+            Math.abs(longitude) > 180
+          ) {
+            setLocationError(
+              "Invalid GPS coordinates received."
+            );
+
+            setCurrentLocation(null);
+
+            return;
+          }
+
+          if (
+            !Number.isFinite(accuracy) ||
+            accuracy < 0 ||
+            accuracy > MAX_ACCEPTABLE_ACCURACY_METERS
+          ) {
+            setLocationError(
+              "GPS accuracy is currently poor. Waiting for a more accurate location."
+            );
+
+            setCurrentLocation(null);
+
+            return;
+          }
+
+          const timestamp = Number(position.timestamp);
+
+          const now = Date.now();
+
+          if (
+            !Number.isFinite(timestamp) ||
+            timestamp > now ||
+            now - timestamp > GPS_STALE_AFTER_MS
+          ) {
+            setLocationError(
+              "Received an outdated GPS position. Waiting for a fresh update."
+            );
+
+            setCurrentLocation(null);
+
+            return;
+          }
+
+          // A reliable position has been received.
+          lastUpdateRef.current = now;
+
+          setCurrentLocation({
+            latitude,
+            longitude,
+            accuracy,
+            heading,
+            speed,
+            timestamp,
+          });
+
+          setLocationError("");
+        },
+
+        // ----------------------------------------------------
+        // GPS ERROR
+        // ----------------------------------------------------
+
+        (error) => {
+          if (sessionId !== sessionRef.current) {
+            return;
+          }
+
+          const message = getLocationError(error);
+
+          // Permission denied: end the tracking session.
+          if (error?.code === 1) {
+            stopTracking();
+
+            setLocationError(message);
+
+            return;
+          }
+
+          // Temporary GPS errors do not stop watchPosition.
+          // The browser may recover automatically.
+          setLocationError(message);
+
+          setCurrentLocation(null);
+        },
+
+        // ----------------------------------------------------
+        // GPS OPTIONS
+        // ----------------------------------------------------
+
+        {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: GPS_TIMEOUT_MS,
+        }
+      );
+
+      watchIdRef.current = watchId;
+    } catch (error) {
+      stopTracking();
+
+      setLocationError(getLocationError(error));
+    }
+  }, [clearGpsMonitor, stopTracking]);
 
   // ----------------------------------------------------------
   // CLEANUP ON COMPONENT UNMOUNT
@@ -181,9 +313,11 @@ export default function useLiveNavigation() {
         watchIdRef.current = null;
       }
 
+      clearGpsMonitor();
+
       trackingRef.current = false;
     };
-  }, []);
+  }, [clearGpsMonitor]);
 
   // ----------------------------------------------------------
   // PUBLIC API

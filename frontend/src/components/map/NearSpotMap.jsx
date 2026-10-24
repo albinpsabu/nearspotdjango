@@ -666,6 +666,10 @@ function NearSpotMap({
   const [isRerouting, setIsRerouting] = useState(false);
   const [rerouteError, setRerouteError] = useState("");
 
+  // Navigation camera controls (separate from GPS tracking).
+  const cameraActionsRef = useRef(null);
+  const [isCameraFollowing, setIsCameraFollowing] = useState(true);
+
   const {
     modes,
     loading: modesLoading,
@@ -741,6 +745,7 @@ function NearSpotMap({
   const routeRequestIdRef = useRef(0);
   const routeLoadingRef = useRef(false);
   const processedDestinationRef = useRef(null);
+  const lastRouteAttemptRef = useRef(null);
 
   const currentDestinationRef = useRef(null);
   const destinationNameRef = useRef("Selected destination");
@@ -812,6 +817,8 @@ function NearSpotMap({
       );
       return;
     }
+
+    lastRouteAttemptRef.current = { destination, mode };
 
     const nextDestinationName =
       destination?.name ||
@@ -945,6 +952,13 @@ function NearSpotMap({
         setRouteLoading(false);
       }
     }
+  }
+
+  // Retry the last manual directions request after a failure.
+  function handleRetryDirections() {
+    const attempt = lastRouteAttemptRef.current;
+    if (!attempt || routeLoadingRef.current) return;
+    handleGetDirections(attempt.destination, attempt.mode);
   }
 
   // ==========================================================
@@ -1202,6 +1216,7 @@ function NearSpotMap({
 
     setRouteError("");
     setRerouteError("");
+    lastRouteAttemptRef.current = null;
 
     currentDestinationRef.current = null;
     destinationNameRef.current = "Selected destination";
@@ -1317,6 +1332,8 @@ function NearSpotMap({
         <NavigationCamera
           location={liveLocation}
           enabled={isNavigating && isTracking}
+          cameraActionsRef={cameraActionsRef}
+          onFollowingChange={setIsCameraFollowing}
         />
 
         {/* MAP CLICK HANDLER */}
@@ -1413,6 +1430,28 @@ function NearSpotMap({
         )}
       </MapContainer>
 
+      {/* Recenter is always available while live navigation is active. */}
+      {isNavigating && isTracking && (
+        <button
+          type="button"
+          className="btn btn-light position-absolute shadow d-flex align-items-center gap-2"
+          style={{
+            right: "24px",
+            bottom: "110px",
+            zIndex: 1200,
+            borderRadius: "24px",
+            padding: "10px 16px",
+            border: "1px solid #dee2e6",
+          }}
+          onClick={() => cameraActionsRef.current?.recenter?.()}
+          title="Resume automatic navigation following"
+          aria-label="Recenter navigation"
+        >
+          <i className="bi bi-crosshair" aria-hidden="true" />
+          <span className="fw-semibold">Recenter</span>
+        </button>
+      )}
+
       {/* ======================================================
           REROUTING STATUS
       ====================================================== */}
@@ -1492,6 +1531,17 @@ function NearSpotMap({
           role="alert"
         >
           <span>{routeError}</span>
+
+          {lastRouteAttemptRef.current && (
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm flex-shrink-0"
+              onClick={handleRetryDirections}
+              disabled={routeLoading}
+            >
+              Retry Directions
+            </button>
+          )}
 
           <button
             type="button"

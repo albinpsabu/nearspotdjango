@@ -407,41 +407,25 @@ function App() {
   // Shared actions exposed by NearSpotMap.
   const navigationActionsRef = useRef(null);
 
-  // Prevent old route snapshots from reopening a closed panel.
-  const directionsDismissedRef = useRef(false);
+  // The map clears its route when Directions is closed.
+  // A new non-null route snapshot should always reopen the panel.
+  const handleDirectionsChange = useCallback((nextDirections) => {
+    setDirectionsProps(nextDirections);
+    setDirectionsVisible(Boolean(nextDirections));
 
-  const handleDirectionsChange = useCallback(
-    (nextDirections) => {
-      setDirectionsProps(nextDirections);
-
-      if (!nextDirections) {
-        setDirectionsVisible(false);
-        directionsDismissedRef.current = false;
-        return;
-      }
-
-      if (!directionsDismissedRef.current) {
-        setDirectionsVisible(true);
-        setSidebarCollapsed(true);
-      }
-    },
-    []
-  );
+    if (nextDirections) {
+      setSidebarCollapsed(true);
+    }
+  }, []);
 
   const handleCloseDirectionsPanel = useCallback(() => {
-    directionsDismissedRef.current = true;
-
     navigationActionsRef.current?.clearRoute?.();
-
     setDirectionsVisible(false);
     setDirectionsProps(null);
   }, []);
 
   const handleSidebarSectionSelect = useCallback(() => {
-    directionsDismissedRef.current = true;
-
     navigationActionsRef.current?.clearRoute?.();
-
     setDirectionsVisible(false);
     setDirectionsProps(null);
   }, []);

@@ -105,15 +105,41 @@ function NearSpotSidebar({
 
   return (
     <>
+      {/* Responsive widths are shared with the Directions panel.
+          App.jsx search positioning will be adjusted in the next step. */}
+      <style>{`
+        .nearspot-primary-sidebar {
+          width: 320px;
+          max-width: 100vw;
+        }
+        .nearspot-primary-sidebar.is-collapsed {
+          width: 76px;
+        }
+        .nearspot-directions-panel {
+          left: 76px;
+          width: min(420px, calc(100vw - 76px));
+          max-width: calc(100vw - 76px);
+        }
+        @media (max-width: 600px) {
+          .nearspot-primary-sidebar:not(.is-collapsed) {
+            width: min(320px, 100vw);
+          }
+          .nearspot-directions-panel {
+            overscroll-behavior: contain;
+          }
+          .nearspot-primary-sidebar button,
+          .nearspot-directions-panel button {
+            touch-action: manipulation;
+          }
+        }
+      `}</style>
       {/* ORIGINAL NEARSPOT SIDEBAR */}
       <aside
-        className="position-absolute d-flex flex-column bg-white border shadow-lg"
+        className={`nearspot-primary-sidebar position-absolute d-flex flex-column bg-white border shadow-lg ${collapsed ? "is-collapsed" : ""}`}
         style={{
           top: "0px",
           bottom: "0px",
           left: "0px",
-          width: collapsed ? "76px" : "320px",
-          maxWidth: "100vw",
           borderRadius: "0px",
           overflow: "hidden",
           zIndex: 1100,
@@ -434,12 +460,10 @@ function NearSpotSidebar({
       {/* SEPARATE DIRECTIONS PANEL */}
       {directionsVisible && (
         <div
-          className="position-absolute bg-white border-end shadow-lg d-flex flex-column"
+          className="nearspot-directions-panel position-absolute bg-white border-end shadow-lg d-flex flex-column"
           style={{
             top: 0,
             bottom: 0,
-            left: "76px",
-            width: "min(420px, calc(100vw - 76px))",
             zIndex: 1099,
             overflow: "hidden",
           }}
@@ -473,3 +497,4 @@ function NearSpotSidebar({
 }
 
 export default NearSpotSidebar;
+
