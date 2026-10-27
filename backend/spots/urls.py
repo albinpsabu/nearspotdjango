@@ -11,12 +11,12 @@ from .views_external import (
     ExternalPlaceSaveView,
     SavedExternalPlaceListView,
     ExternalPlaceReviewView,
-    MyExternalReviewListView
+    MyExternalReviewListView,
 )
 
 
 # ============================================================
-# IMPORT EXISTING SPOT VIEWS
+# IMPORT REGULAR SPOT VIEWS
 # ============================================================
 
 from .views import (
@@ -69,37 +69,44 @@ from .views import (
     AdminSpotDeleteView,
     AdminSpotStatusView,
     AuditLogListView,
+
+    # Persistent notifications
+    NotificationListView,
+    NotificationMarkReadView,
+    NotificationMarkAllReadView,
 )
 
 
 # ============================================================
 # URL PATTERNS
 # ============================================================
-
-# These paths are relative to the prefix configured
-# in the project's main urls.py.
 #
-# For example, if included under "api/spots/",
-# the path "nearby/" becomes "/api/spots/nearby/".
+# These paths are relative to the "api/spots/" prefix
+# configured in the project's main urls.py.
 #
-# Public endpoints allow visitors to browse without login.
-# Protected endpoints enforce permissions in their views.
+# Example:
+# "nearby/" becomes "/api/spots/nearby/".
+#
+# Public endpoints allow visitors to browse places.
+# Protected endpoints require authentication or permissions
+# defined by their corresponding views.
+# ============================================================
 
 urlpatterns = [
 
     # ========================================================
     # 1. CATEGORIES
     # ========================================================
+    # GET: List categories.
+    # POST: Create a category, subject to view permissions.
 
-    # GET  - List available categories (public)
-    # POST - Create a category (admin only)
     path(
         "categories/",
         CategoryListCreateView.as_view(),
         name="category-list-create",
     ),
 
-    # Retrieve, update or delete a category.
+    # Retrieve, update, or delete a category.
     path(
         "categories/<int:pk>/",
         CategoryDetailView.as_view(),
@@ -110,23 +117,16 @@ urlpatterns = [
     # ========================================================
     # 2. PUBLIC SPOT DISCOVERY
     # ========================================================
+    # List approved spots.
 
-    # List all approved spots.
     path(
         "approved/",
         ApprovedSpotListView.as_view(),
         name="approved-spots",
     ),
 
-    # Retrieve approved spots near a geographic location.
-    #
-    # Query parameters:
-    # latitude  - Latitude of the search center
-    # longitude - Longitude of the search center
-    # radius    - Search radius in meters
-    #
-    # Example:
-    # nearby/?latitude=8.5241&longitude=76.9366&radius=5000
+    # Find approved spots near a geographic location.
+    # Query parameters: latitude, longitude, radius.
 
     path(
         "nearby/",
@@ -138,9 +138,8 @@ urlpatterns = [
     # ========================================================
     # 3. USER SPOT SUBMISSION
     # ========================================================
+    # Submit a new hidden spot.
 
-    # POST - Submit a new hidden spot.
-    # Requires an authenticated user with USER role.
     path(
         "",
         HiddenSpotCreateView.as_view(),
@@ -151,15 +150,15 @@ urlpatterns = [
     # ========================================================
     # 4. USER SPOT MANAGEMENT
     # ========================================================
-
     # List spots submitted by the current user.
+
     path(
         "my/",
         MySpotListView.as_view(),
         name="my-spots",
     ),
 
-    # Update one of the user's pending submissions.
+    # Update a user's own spot submission.
     path(
         "my/<int:pk>/",
         MySpotUpdateView.as_view(),
@@ -177,16 +176,15 @@ urlpatterns = [
     # ========================================================
     # 5. SPOT REVIEWS
     # ========================================================
+    # List or create reviews for a spot.
 
-    # GET  - List reviews for an approved spot.
-    # POST - Create a review.
     path(
         "<int:pk>/reviews/",
         ReviewListCreateView.as_view(),
         name="spot-reviews",
     ),
 
-    # Retrieve, update or delete a specific review.
+    # Retrieve, update, or delete a specific review.
     path(
         "<int:pk>/reviews/<int:review_pk>/",
         ReviewDetailView.as_view(),
@@ -204,16 +202,17 @@ urlpatterns = [
     # ========================================================
     # 6. SAVED SPOTS
     # ========================================================
-
     # List spots saved by the current user.
+
     path(
         "saved/",
         SavedSpotListView.as_view(),
         name="saved-spots",
     ),
 
-    # POST   - Save an approved spot.
-    # DELETE - Remove a saved spot.
+    # POST: Save an approved spot.
+    # DELETE: Remove a saved spot.
+
     path(
         "<int:pk>/save/",
         SavedSpotView.as_view(),
@@ -224,8 +223,8 @@ urlpatterns = [
     # ========================================================
     # 7. SPOT REPORTS
     # ========================================================
-
     # Submit a report about a spot.
+
     path(
         "<int:pk>/report/",
         ReportSpotView.as_view(),
@@ -250,8 +249,8 @@ urlpatterns = [
     # ========================================================
     # 8. COMMUNITY VERIFICATION
     # ========================================================
+    # Submit a community verification.
 
-    # Submit community verification for a spot.
     path(
         "community-verify/",
         CommunityVerificationCreateView.as_view(),
@@ -276,8 +275,8 @@ urlpatterns = [
     # ========================================================
     # 9. SPOT MEDIA
     # ========================================================
-
     # Upload media for a submitted spot.
+
     path(
         "media/upload/",
         SpotMediaUploadView.as_view(),
@@ -288,8 +287,8 @@ urlpatterns = [
     # ========================================================
     # 10. EMPLOYEE SPOT MODERATION
     # ========================================================
+    # List pending spot submissions.
 
-    # List all pending spot submissions.
     path(
         "pending/",
         PendingSpotListView.as_view(),
@@ -328,8 +327,8 @@ urlpatterns = [
     # ========================================================
     # 11. ADMIN SPOT MANAGEMENT
     # ========================================================
+    # List spots for administration.
 
-    # List all spots for administration.
     path(
         "admin/spots/",
         AdminSpotListView.as_view(),
@@ -361,8 +360,9 @@ urlpatterns = [
     # ========================================================
     # 12. PUBLIC SPOT DETAILS
     # ========================================================
-
     # Retrieve an approved spot.
+    # Keep this generic route after more specific spot routes.
+
     path(
         "<int:pk>/",
         ApprovedSpotDetailView.as_view(),
@@ -373,16 +373,8 @@ urlpatterns = [
     # ========================================================
     # 13. EXTERNAL OPENSTREETMAP PLACE DISCOVERY
     # ========================================================
-
-    # GET - Discover OSM places within the map viewport.
-    #
-    # Query parameters:
-    # south, west, north, east
-    #
-    # Uses persistent geographic caching through
-    # place_discovery.py.
-    #
-    # Public access.
+    # Discover OpenStreetMap places in the current map viewport.
+    # Query parameters: south, west, north, east.
 
     path(
         "external/nearby/",
@@ -394,10 +386,7 @@ urlpatterns = [
     # ========================================================
     # 14. SAVED EXTERNAL PLACES
     # ========================================================
-
-    # GET - List external places saved by the current user.
-    #
-    # Authentication required.
+    # List external places saved by the current user.
 
     path(
         "external/saved/",
@@ -407,16 +396,10 @@ urlpatterns = [
 
 
     # ========================================================
-    # 15. SAVE / UNSAVE EXTERNAL PLACE
+    # 15. SAVE OR UNSAVE EXTERNAL PLACES
     # ========================================================
-
-    # POST   - Save an external OSM place.
-    # DELETE - Unsave an external OSM place.
-    #
-    # Authentication required.
-    #
-    # New places are verified through the official
-    # OpenStreetMap API before registration.
+    # POST: Save an external OpenStreetMap place.
+    # DELETE: Unsave an external place.
 
     path(
         "external/<str:osm_type>/<int:osm_id>/save/",
@@ -428,14 +411,7 @@ urlpatterns = [
     # ========================================================
     # 16. EXTERNAL PLACE REVIEWS
     # ========================================================
-
-    # POST   - Create a review.
-    # PATCH  - Update the current user's review.
-    # DELETE - Delete the current user's review.
-    #
-    # Authentication required.
-    #
-    # Each user can review an external place once.
+    # Create, update, or delete the current user's review.
 
     path(
         "external/<str:osm_type>/<int:osm_id>/review/",
@@ -443,25 +419,19 @@ urlpatterns = [
         name="external-place-review",
     ),
 
+    # List reviews written by the current user for external places.
+    path(
+        "external/reviews/my/",
+        MyExternalReviewListView.as_view(),
+        name="my-external-reviews",
+    ),
+
 
     # ========================================================
     # 17. EXTERNAL PLACE DETAILS
     # ========================================================
-
-    # GET - Retrieve a registered external place's:
-    # - Name
-    # - Category
-    # - Address
-    # - Coordinates
-    # - Average rating
-    # - Review count
-    # - Saved status
-    # - Reviews
-    #
-    # Public access.
-    #
-    # Keep this generic external-place route after
-    # the more specific external routes.
+    # Retrieve external place details, ratings, and reviews.
+    # Keep this generic route after more specific external routes.
 
     path(
         "external/<str:osm_type>/<int:osm_id>/",
@@ -470,10 +440,39 @@ urlpatterns = [
     ),
 
 
+    # ========================================================
+    # 18. PERSISTENT NOTIFICATIONS
+    # ========================================================
+    # GET: Retrieve notifications belonging to the logged-in user.
+    #
+    # Full endpoint:
+    # /api/spots/notifications/
 
     path(
-    "external/reviews/my/",
-    MyExternalReviewListView.as_view(),
-    name="my-external-reviews",
-),
+        "notifications/",
+        NotificationListView.as_view(),
+        name="notification-list",
+    ),
+
+    # PATCH: Mark one notification as read.
+    #
+    # Full endpoint example:
+    # /api/spots/notifications/1/read/
+
+    path(
+        "notifications/<int:pk>/read/",
+        NotificationMarkReadView.as_view(),
+        name="notification-mark-read",
+    ),
+
+    # POST: Mark all unread notifications as read.
+    #
+    # Full endpoint:
+    # /api/spots/notifications/read-all/
+
+    path(
+        "notifications/read-all/",
+        NotificationMarkAllReadView.as_view(),
+        name="notification-mark-all-read",
+    ),
 ]

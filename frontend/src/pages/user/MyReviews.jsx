@@ -1,12 +1,11 @@
-
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useMyReviews } from "../../hooks/useMyReviews";
 
 const cardStyle = {
   borderRadius: "16px",
-  border: "1px solid #edf1ef",
-  boxShadow: "0 4px 18px rgba(20, 50, 45, 0.04)",
+  border: "1px solid #e8efec",
+  boxShadow: "0 4px 20px rgba(20, 50, 45, 0.04)",
   backgroundColor: "#ffffff",
 };
 
@@ -34,7 +33,7 @@ export default function MyReviews() {
       <div className="text-center py-5">
         <div
           className="spinner-border"
-          style={{ color: "#20cfa7" }}
+          style={{ color: "#087f68" }}
           role="status"
           aria-label="Loading account"
         />
@@ -59,10 +58,10 @@ export default function MyReviews() {
         >
           <div className="card-body p-4 p-md-5">
             <div
-              className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+              className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-4"
               style={{
-                width: "70px",
-                height: "70px",
+                width: "72px",
+                height: "72px",
                 backgroundColor: "#e6faf4",
                 color: "#087f68",
               }}
@@ -74,15 +73,14 @@ export default function MyReviews() {
               />
             </div>
 
-            <h5 className="fw-bold mb-2">
-              Login Required
-            </h5>
+            <h5 className="fw-bold mb-2">Login Required</h5>
 
             <p
               className="mb-0"
               style={{
                 color: "#819092",
                 fontSize: "13px",
+                lineHeight: 1.7,
               }}
             >
               Please log in to view your reviews.
@@ -94,28 +92,39 @@ export default function MyReviews() {
   }
 
   return (
-    <div
-      className="w-100"
-      style={{ color: "#1d2b2e" }}
-    >
-      {/* Page Heading */}
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div className="w-100" style={{ color: "#1d2b2e" }}>
+      {/* Page heading */}
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
         <div>
-          <h3
+          <div
+            className="d-inline-flex align-items-center gap-2 rounded-pill px-3 py-2 mb-3"
+            style={{
+              backgroundColor: "#e6faf4",
+              color: "#087f68",
+              fontSize: "11px",
+              fontWeight: 600,
+            }}
+          >
+            <i className="bi bi-chat-square-text" aria-hidden="true" />
+            YOUR FEEDBACK
+          </div>
+
+          <h2
             className="fw-bold mb-2"
             style={{
-              fontSize: "26px",
-              letterSpacing: "-0.6px",
+              fontSize: "clamp(24px, 3vw, 32px)",
+              letterSpacing: "-0.8px",
             }}
           >
             My Reviews
-          </h3>
+          </h2>
 
           <p
             className="mb-0"
             style={{
               color: "#819092",
               fontSize: "14px",
+              lineHeight: 1.7,
             }}
           >
             Your ratings and experiences shared with the NearSpot community.
@@ -123,7 +132,7 @@ export default function MyReviews() {
         </div>
 
         <span
-          className="badge rounded-pill px-3 py-2 d-inline-flex align-items-center gap-2"
+          className="badge rounded-pill px-3 py-2 d-inline-flex align-items-center gap-2 align-self-start align-self-md-center"
           style={{
             backgroundColor: "#e6faf4",
             color: "#087f68",
@@ -131,25 +140,28 @@ export default function MyReviews() {
             fontWeight: 600,
           }}
         >
-          <i
-            className="bi bi-chat-square-text"
-            aria-hidden="true"
-          />
+          <i className="bi bi-chat-square-text" aria-hidden="true" />
           {reviews.length} {reviews.length === 1 ? "Review" : "Reviews"}
         </span>
       </div>
 
-      {/* Error Message */}
+      {/* Error message */}
       {error && (
         <div
-          className="alert alert-danger rounded-3 d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"
+          className="alert alert-danger rounded-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4"
           role="alert"
         >
-          <span>{error}</span>
+          <div className="d-flex align-items-start gap-2">
+            <i
+              className="bi bi-exclamation-circle mt-1"
+              aria-hidden="true"
+            />
+            <span>{error}</span>
+          </div>
 
           <button
             type="button"
-            className="btn btn-sm btn-outline-danger"
+            className="btn btn-sm btn-outline-danger align-self-start align-self-sm-center"
             onClick={fetchMyReviews}
             disabled={loading}
           >
@@ -162,26 +174,41 @@ export default function MyReviews() {
         </div>
       )}
 
-      {/* Reviews Container */}
-      <div
-        className="card mb-4"
-        style={cardStyle}
-      >
+      {/* Reviews container */}
+      <div className="card mb-4" style={cardStyle}>
         <div className="card-body p-3 p-md-4">
-          <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+          <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-3 mb-4">
             <div>
-              <h5
-                className="fw-bold mb-2"
-                style={{ fontSize: "17px" }}
-              >
-                Your Reviews
-              </h5>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <div
+                  className="d-flex align-items-center justify-content-center rounded-3"
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    backgroundColor: "#e6faf4",
+                    color: "#087f68",
+                  }}
+                >
+                  <i
+                    className="bi bi-star-half"
+                    aria-hidden="true"
+                  />
+                </div>
+
+                <h5
+                  className="fw-bold mb-0"
+                  style={{ fontSize: "17px" }}
+                >
+                  Your Reviews
+                </h5>
+              </div>
 
               <p
                 className="mb-0"
                 style={{
                   color: "#819092",
                   fontSize: "12px",
+                  lineHeight: 1.7,
                 }}
               >
                 View your reviews, ratings, and shared media.
@@ -190,31 +217,34 @@ export default function MyReviews() {
 
             <button
               type="button"
-              className="btn d-flex align-items-center gap-2 fw-semibold px-3 py-2"
+              className="btn d-inline-flex align-items-center justify-content-center gap-2 fw-semibold px-3 py-2 align-self-start align-self-sm-center"
               onClick={fetchMyReviews}
               disabled={loading}
               style={{
                 color: "#087f68",
-                backgroundColor: "#e6faf4",
-                border: "1px solid #c9f2e6",
+                backgroundColor: "#ffffff",
+                border: "1px solid #dce9e4",
                 borderRadius: "10px",
                 fontSize: "12px",
+                minHeight: "40px",
               }}
             >
               <i
-                className="bi bi-arrow-clockwise"
+                className={`bi ${
+                  loading ? "bi-arrow-repeat" : "bi-arrow-clockwise"
+                }`}
                 aria-hidden="true"
               />
               {loading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
 
-          {/* Loading */}
+          {/* Loading state */}
           {loading && reviews.length === 0 ? (
             <div className="text-center py-5">
               <div
                 className="spinner-border"
-                style={{ color: "#20cfa7" }}
+                style={{ color: "#087f68" }}
                 role="status"
                 aria-label="Loading reviews"
               />
@@ -230,13 +260,13 @@ export default function MyReviews() {
               </p>
             </div>
           ) : reviews.length === 0 && !error ? (
-            /* Empty State */
+            /* Empty state */
             <div className="text-center py-5 px-2">
               <div
-                className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+                className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-4"
                 style={{
-                  width: "76px",
-                  height: "76px",
+                  width: "78px",
+                  height: "78px",
                   backgroundColor: "#e6faf4",
                   color: "#087f68",
                 }}
@@ -248,9 +278,7 @@ export default function MyReviews() {
                 />
               </div>
 
-              <h6 className="fw-bold mb-2">
-                No reviews yet
-              </h6>
+              <h5 className="fw-bold mb-2">No reviews yet</h5>
 
               <p
                 className="mx-auto mb-0"
@@ -258,7 +286,7 @@ export default function MyReviews() {
                   color: "#819092",
                   fontSize: "13px",
                   maxWidth: "420px",
-                  lineHeight: 1.7,
+                  lineHeight: 1.8,
                 }}
               >
                 Your reviews will appear here after you write them on a
@@ -269,7 +297,7 @@ export default function MyReviews() {
                 to="/"
                 className="btn text-white fw-semibold px-4 py-2 mt-4"
                 style={{
-                  backgroundColor: "#20cfa7",
+                  backgroundColor: "#087f68",
                   borderRadius: "10px",
                   fontSize: "13px",
                 }}
@@ -282,50 +310,69 @@ export default function MyReviews() {
               </Link>
             </div>
           ) : reviews.length > 0 ? (
-            /* Reviews List */
+            /* Reviews list */
             <div className="d-flex flex-column gap-3">
               {reviews.map((review) => (
                 <article
                   key={review.id}
                   className="p-3 p-md-4"
                   style={{
-                    border: "1px solid #e8eeee",
-                    borderRadius: "12px",
+                    border: "1px solid #e8efec",
+                    borderRadius: "14px",
                     backgroundColor: "#ffffff",
                   }}
                 >
-                  {/* Spot Details */}
-                  <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                  {/* Spot details */}
+                  <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start gap-3 mb-3">
                     <div
-                      className="flex-grow-1"
+                      className="d-flex align-items-start gap-3 flex-grow-1"
                       style={{ minWidth: 0 }}
                     >
-                      <h6
-                        className="fw-bold mb-2 text-break"
+                      <div
+                        className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
                         style={{
-                          color: "#26373a",
-                          fontSize: "15px",
+                          width: "42px",
+                          height: "42px",
+                          backgroundColor: "#f0f8f5",
+                          color: "#087f68",
                         }}
                       >
-                        {review.spot_name || "Unnamed spot"}
-                      </h6>
+                        <i
+                          className="bi bi-geo-alt"
+                          aria-hidden="true"
+                          style={{ fontSize: "19px" }}
+                        />
+                      </div>
 
-                      {review.spot_category && (
-                        <span
-                          className="badge rounded-pill px-3 py-2"
+                      <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                        <h6
+                          className="fw-bold mb-2 text-break"
                           style={{
-                            backgroundColor: "#e6faf4",
-                            color: "#087f68",
-                            fontSize: "11px",
+                            color: "#26373a",
+                            fontSize: "15px",
                           }}
                         >
-                          {review.spot_category}
-                        </span>
-                      )}
+                          {review.spot_name || "Unnamed spot"}
+                        </h6>
+
+                        {review.spot_category && (
+                          <span
+                            className="badge rounded-pill px-3 py-2"
+                            style={{
+                              backgroundColor: "#e6faf4",
+                              color: "#087f68",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {review.spot_category}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <small
-                      className="d-flex align-items-center gap-2"
+                      className="d-flex align-items-center gap-2 flex-shrink-0"
                       style={{
                         color: "#819092",
                         fontSize: "12px",
@@ -339,14 +386,17 @@ export default function MyReviews() {
                     </small>
                   </div>
 
-                  {/* Star Rating */}
-                  <div className="d-flex align-items-center gap-3 mb-3">
+                  {/* Star rating */}
+                  <div
+                    className="d-flex flex-wrap align-items-center gap-3 mb-3 p-3 rounded-3"
+                    style={{ backgroundColor: "#fbfcfb" }}
+                  >
                     <div
                       className="d-flex gap-1"
                       role="img"
                       aria-label={`Rating: ${review.rating} out of 5`}
                       style={{
-                        fontSize: "21px",
+                        fontSize: "22px",
                         lineHeight: 1,
                       }}
                     >
@@ -367,77 +417,123 @@ export default function MyReviews() {
                     </div>
 
                     <span
-                      className="fw-semibold"
+                      className="fw-bold"
                       style={{
                         color: "#526366",
-                        fontSize: "12px",
+                        fontSize: "13px",
                       }}
                     >
                       {review.rating}/5
                     </span>
+
+                    <span
+                      className="text-secondary"
+                      style={{ fontSize: "11px" }}
+                    >
+                      Your rating
+                    </span>
                   </div>
 
-                  {/* Review Comment */}
+                  {/* Review comment */}
                   {review.comment && (
-                    <p
-                      className="mb-0 text-break"
-                      style={{
-                        color: "#566568",
-                        fontSize: "13px",
-                        whiteSpace: "pre-wrap",
-                        lineHeight: 1.8,
-                      }}
-                    >
-                      {review.comment}
-                    </p>
+                    <div className="mb-0">
+                      <div
+                        className="d-flex align-items-center gap-2 mb-2"
+                        style={{
+                          color: "#526366",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <i
+                          className="bi bi-quote"
+                          aria-hidden="true"
+                        />
+                        Your experience
+                      </div>
+
+                      <p
+                        className="mb-0 text-break"
+                        style={{
+                          color: "#566568",
+                          fontSize: "13px",
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.8,
+                        }}
+                      >
+                        {review.comment}
+                      </p>
+                    </div>
                   )}
 
-                  {/* Review Media */}
+                  {/* Review media */}
                   {review.media?.length > 0 && (
-                    <div className="d-flex flex-wrap gap-3 mt-4">
-                      {review.media.map((media) => (
-                        <a
-                          key={media.id}
-                          href={media.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="d-block rounded-3 overflow-hidden"
-                          aria-label={`Open review ${
-                            media.media_type?.toLowerCase() || "media"
-                          }`}
-                        >
-                          {media.media_type === "IMAGE" ? (
-                            <img
-                              src={media.url}
-                              alt={`Media for ${
-                                review.spot_name || "review"
+                    <div className="mt-4">
+                      <div
+                        className="d-flex align-items-center gap-2 mb-3"
+                        style={{
+                          color: "#526366",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <i
+                          className="bi bi-images"
+                          aria-hidden="true"
+                        />
+                        Shared media
+                      </div>
+
+                      <div className="row g-2">
+                        {review.media.map((media) => (
+                          <div
+                            className="col-auto"
+                            key={media.id}
+                          >
+                            <a
+                              href={media.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="d-block rounded-3 overflow-hidden"
+                              aria-label={`Open review ${
+                                media.media_type?.toLowerCase() || "media"
                               }`}
-                              className="rounded-3"
                               style={{
-                                width: "105px",
-                                height: "105px",
-                                objectFit: "cover",
-                                border: "1px solid #e8eeee",
+                                border: "1px solid #e8efec",
+                                lineHeight: 0,
                               }}
-                              loading="lazy"
-                            />
-                          ) : (
-                            <video
-                              src={media.url}
-                              className="rounded-3"
-                              style={{
-                                width: "105px",
-                                height: "105px",
-                                objectFit: "cover",
-                                border: "1px solid #e8eeee",
-                              }}
-                              muted
-                              preload="metadata"
-                              aria-label="Review video preview"
-                            />
-                          )}
-                        </a>
-                      ))}
+                            >
+                              {media.media_type === "IMAGE" ? (
+                                <img
+                                  src={media.url}
+                                  alt={`Media for ${
+                                    review.spot_name || "review"
+                                  }`}
+                                  className="img-fluid"
+                                  style={{
+                                    width: "110px",
+                                    height: "110px",
+                                    objectFit: "cover",
+                                  }}
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <video
+                                  src={media.url}
+                                  style={{
+                                    width: "110px",
+                                    height: "110px",
+                                    objectFit: "cover",
+                                  }}
+                                  muted
+                                  preload="metadata"
+                                  aria-label="Review video preview"
+                                />
+                              )}
+                            </a>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </article>

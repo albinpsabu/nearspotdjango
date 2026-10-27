@@ -1,3 +1,7 @@
+from django.db import transaction
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
@@ -11,7 +15,6 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.exceptions import PermissionDenied
 
-
 from .models import (
     Category,
     HiddenSpot,
@@ -22,6 +25,9 @@ from .models import (
     AuditLog,
     Review,
     SavedSpot,
+    Notification
+
+
 )
 from django.contrib.gis.geos import Point
 from django.contrib.gis.db.models.functions import Distance
@@ -46,8 +52,55 @@ from .serializers import (
     SavedSpotSerializer,
     SavedSpotListSerializer,
     MyReviewSerializer,
+    NotificationSerializer,
 
 )
+
+def notify_spot_owner(spot, notification_type, message):
+    def send_notification():
+        notification_titles = {
+            "spot.pending": "Spot Submitted",
+            "spot.approved": "Spot Approved",
+            "spot.rejected": "Spot Rejected",
+        }
+
+        notification = Notification.objects.create(
+            recipient_id=spot.submitted_by_id,
+            notification_type=notification_type,
+            title=notification_titles.get(
+                notification_type,
+                "Spot Update",
+            ),
+            message=message,
+            spot=spot,
+        )
+
+        channel_layer = get_channel_layer()
+
+        if channel_layer is None:
+            return
+
+        async_to_sync(channel_layer.group_send)(
+            f"spot_user_{spot.submitted_by_id}",
+            {
+                "type": "user.notification",
+                "notification_type": notification_type,
+                "data": {
+                    "id": notification.pk,
+                    "spot_id": spot.pk,
+                    "name": spot.name,
+                    "status": spot.status,
+                    "title": notification.title,
+                    "message": notification.message,
+                    "rejection_reason": spot.rejection_reason,
+                    "is_read": notification.is_read,
+                    "created_at": notification.created_at.isoformat(),
+                },
+            },
+        )
+
+    transaction.on_commit(send_notification)
+
 
 
 class CategoryListCreateView(generics.ListCreateAPIView):
@@ -61,6 +114,7 @@ class CategoryListCreateView(generics.ListCreateAPIView):
             return []
 
         return [IsAdmin()]
+    
 
 
 
@@ -190,6 +244,11 @@ class RejectSpotView(APIView):
             action="SPOT_REJECTED",
             description=f"Spot '{spot.name}' (ID: {spot.id}) was rejected. Reason: {reason}",
         )
+        notify_spot_owner(
+            spot,
+            "spot.rejected",
+            "Your spot submission has been rejected.",
+        )
 
         return Response(
             {
@@ -241,6 +300,17 @@ class ApproveSpotView(APIView):
                 action="SPOT_APPROVED",
                 description=f"Spot '{spot.name}' (ID: {spot.id}) was approved.",
             )
+        print(
+           
+            f"{spot.submitted_by_id} for spot ID {spot.pk}"
+        )            
+
+        notify_spot_owner(
+            spot,
+            "spot.approved",
+            "Your spot submission has been approved.",
+        )
+
 
         return Response(
             {
@@ -624,6 +694,22 @@ class AdminSpotStatusView(generics.UpdateAPIView):
             spot.rejection_reason = ""
 
         spot.save()
+        if new_status == HiddenSpot.Status.APPROVED:
+            notify_spot_owner(
+                spot,
+                "spot.approved",
+                "Your spot submission has been approved.",
+            )
+        elif new_status == HiddenSpot.Status.REJECTED:
+            notify_spot_owner(
+                spot,
+                "spot.rejected",
+                (
+                    f"Your spot submission was rejected. "
+                    f"Reason: {spot.rejection_reason or 'No reason provided.'}"
+                ),
+            )
+
 
         AuditLog.objects.create(
             user=request.user,
@@ -860,3 +946,61 @@ class MyReviewListView(generics.ListAPIView):
         return Review.objects.filter(user=self.request.user).select_related(
             "spot", "spot__category"
         ).prefetch_related("media").order_by("-created_at")
+
+
+
+
+
+
+class NotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            Notification.objects
+            .filter(recipient=self.request.user)
+            .select_related("spot")
+            .order_by("-created_at")
+        )
+
+
+class NotificationMarkReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        notification = get_object_or_404(
+            Notification,
+            pk=pk,
+            recipient=request.user,
+        )
+
+        notification.is_read = True
+        notification.save(update_fields=["is_read"])
+
+        return Response({
+            "message": "Notification marked as read.",
+            "id": notification.pk,
+            "is_read": notification.is_read,
+        })
+
+
+class NotificationMarkAllReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        updated_count = Notification.objects.filter(
+            recipient=request.user,
+            is_read=False,
+        ).update(is_read=True)
+
+        return Response({
+            "message": "All notifications marked as read.",
+            "updated_count": updated_count,
+        })
+
+
+
+
+
+

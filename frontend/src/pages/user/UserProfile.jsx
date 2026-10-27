@@ -10,13 +10,13 @@ const COLORS = {
   green: "#087f68",
   teal: "#20cfa7",
   lightGreen: "#e6faf4",
-  border: "#edf1ef",
+  border: "#e8efec",
 };
 
 const cardStyle = {
   borderRadius: "16px",
   border: `1px solid ${COLORS.border}`,
-  boxShadow: "0 4px 18px rgba(20, 50, 45, 0.04)",
+  boxShadow: "0 4px 20px rgba(20, 50, 45, 0.04)",
   backgroundColor: "#ffffff",
 };
 
@@ -142,17 +142,14 @@ export default function UserProfile() {
       <div className="text-center py-5">
         <div
           className="spinner-border"
-          style={{ color: COLORS.teal }}
+          style={{ color: COLORS.green }}
           role="status"
           aria-label="Loading profile"
         />
 
         <p
           className="mt-3 mb-0"
-          style={{
-            color: COLORS.muted,
-            fontSize: "13px",
-          }}
+          style={{ color: COLORS.muted, fontSize: "13px" }}
         >
           Loading your profile...
         </p>
@@ -165,51 +162,48 @@ export default function UserProfile() {
       <div className="py-5">
         <div
           className="card mx-auto text-center"
-          style={{
-            ...cardStyle,
-            maxWidth: "480px",
-          }}
+          style={{ ...cardStyle, maxWidth: "480px" }}
         >
           <div className="card-body p-4 p-md-5">
             <div
-              className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+              className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-4"
               style={{
-                width: "70px",
-                height: "70px",
+                width: "76px",
+                height: "76px",
                 backgroundColor: COLORS.lightGreen,
                 color: COLORS.green,
               }}
             >
               <i
                 className="bi bi-person-lock"
-                style={{ fontSize: "28px" }}
+                style={{ fontSize: "30px" }}
                 aria-hidden="true"
               />
             </div>
 
-            <h5 className="fw-bold mb-2">
-              Login Required
-            </h5>
+            <h5 className="fw-bold mb-2">Login Required</h5>
 
             <p
               className="mb-4"
               style={{
                 color: COLORS.muted,
                 fontSize: "13px",
+                lineHeight: 1.7,
               }}
             >
-              Please log in to view your profile.
+              Please log in to view and manage your profile.
             </p>
 
             <Link
               to="/login"
               className="btn text-white fw-semibold px-4 py-2"
               style={{
-                backgroundColor: COLORS.teal,
+                backgroundColor: COLORS.green,
                 borderRadius: "10px",
                 fontSize: "13px",
               }}
             >
+              <i className="bi bi-box-arrow-in-right me-2" aria-hidden="true" />
               Go to Login
             </Link>
           </div>
@@ -224,28 +218,39 @@ export default function UserProfile() {
     .toUpperCase();
 
   return (
-    <div
-      className="w-100"
-      style={{ color: COLORS.heading }}
-    >
-      {/* Page Heading */}
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div className="w-100" style={{ color: COLORS.heading }}>
+      {/* Page heading */}
+      <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
         <div>
-          <h3
+          <div
+            className="d-inline-flex align-items-center gap-2 rounded-pill px-3 py-2 mb-3"
+            style={{
+              backgroundColor: COLORS.lightGreen,
+              color: COLORS.green,
+              fontSize: "11px",
+              fontWeight: 600,
+            }}
+          >
+            <i className="bi bi-person-gear" aria-hidden="true" />
+            ACCOUNT SETTINGS
+          </div>
+
+          <h2
             className="fw-bold mb-2"
             style={{
-              fontSize: "26px",
-              letterSpacing: "-0.6px",
+              fontSize: "clamp(24px, 3vw, 32px)",
+              letterSpacing: "-0.8px",
             }}
           >
             Profile Settings
-          </h3>
+          </h2>
 
           <p
             className="mb-0"
             style={{
               color: COLORS.muted,
               fontSize: "14px",
+              lineHeight: 1.7,
             }}
           >
             Manage your personal information and account details.
@@ -253,66 +258,57 @@ export default function UserProfile() {
         </div>
 
         <div
-          className="d-flex align-items-center justify-content-center flex-shrink-0"
+          className="d-flex align-items-center justify-content-center rounded-4 flex-shrink-0 align-self-start align-self-sm-center"
           style={{
-            width: "48px",
-            height: "48px",
-            borderRadius: "13px",
+            width: "58px",
+            height: "58px",
             backgroundColor: COLORS.lightGreen,
             color: COLORS.green,
+            border: "1px solid #d5f3e9",
           }}
         >
           <i
             className="bi bi-person-gear"
             aria-hidden="true"
-            style={{ fontSize: "21px" }}
+            style={{ fontSize: "25px" }}
           />
         </div>
       </div>
 
       <div className="row g-3 g-xl-4">
-        {/* Personal Information Form */}
+        {/* Personal information form */}
         <div className="col-12 col-lg-7">
-          <div
-            className="card h-100"
-            style={cardStyle}
-          >
-            <div className="card-body p-3 p-md-4">
+          <div className="card h-100" style={cardStyle}>
+            <div className="card-body p-3 p-md-4 p-xl-5">
               <div className="d-flex align-items-center gap-3 mb-4">
                 <div
                   className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
                   style={{
-                    width: "52px",
-                    height: "52px",
+                    width: "56px",
+                    height: "56px",
                     backgroundColor: COLORS.lightGreen,
                     color: COLORS.green,
-                    fontSize: "20px",
+                    fontSize: "22px",
                   }}
                 >
                   {initials}
                 </div>
 
-                <div>
-                  <h5
-                    className="fw-bold mb-2"
-                    style={{ fontSize: "17px" }}
-                  >
+                <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                  <h5 className="fw-bold mb-2" style={{ fontSize: "17px" }}>
                     Personal Information
                   </h5>
 
                   <p
                     className="mb-0"
-                    style={{
-                      color: COLORS.muted,
-                      fontSize: "12px",
-                    }}
+                    style={{ color: COLORS.muted, fontSize: "12px" }}
                   >
                     Update the details associated with your account.
                   </p>
                 </div>
               </div>
 
-              {/* Success Message */}
+              {/* Success message */}
               {success && (
                 <div
                   className="alert d-flex align-items-start gap-2 rounded-3"
@@ -325,14 +321,14 @@ export default function UserProfile() {
                   }}
                 >
                   <i
-                    className="bi bi-check-circle-fill"
+                    className="bi bi-check-circle-fill mt-1"
                     aria-hidden="true"
                   />
                   <span>{success}</span>
                 </div>
               )}
 
-              {/* Error Message */}
+              {/* Error message */}
               {error && (
                 <div
                   className="alert alert-danger d-flex align-items-start gap-2 rounded-3"
@@ -340,7 +336,7 @@ export default function UserProfile() {
                   style={{ fontSize: "13px" }}
                 >
                   <i
-                    className="bi bi-exclamation-circle-fill"
+                    className="bi bi-exclamation-circle-fill mt-1"
                     aria-hidden="true"
                   />
                   <span>{error}</span>
@@ -348,15 +344,12 @@ export default function UserProfile() {
               )}
 
               <form onSubmit={handleSubmit}>
-                {/* Full Name */}
+                {/* Full name */}
                 <div className="mb-4">
                   <label
                     htmlFor="profile-name"
                     className="form-label fw-semibold"
-                    style={{
-                      fontSize: "13px",
-                      color: "#526366",
-                    }}
+                    style={{ fontSize: "13px", color: "#526366" }}
                   >
                     Full Name
                   </label>
@@ -365,15 +358,12 @@ export default function UserProfile() {
                     <span
                       className="input-group-text"
                       style={{
-                        backgroundColor: "#ffffff",
+                        backgroundColor: "#f8faf9",
                         borderColor: "#e1e8e6",
                         color: COLORS.muted,
                       }}
                     >
-                      <i
-                        className="bi bi-person"
-                        aria-hidden="true"
-                      />
+                      <i className="bi bi-person" aria-hidden="true" />
                     </span>
 
                     <input
@@ -396,15 +386,12 @@ export default function UserProfile() {
                   </div>
                 </div>
 
-                {/* Email */}
+                {/* Email address */}
                 <div className="mb-4">
                   <label
                     htmlFor="profile-email"
                     className="form-label fw-semibold"
-                    style={{
-                      fontSize: "13px",
-                      color: "#526366",
-                    }}
+                    style={{ fontSize: "13px", color: "#526366" }}
                   >
                     Email Address
                   </label>
@@ -413,15 +400,12 @@ export default function UserProfile() {
                     <span
                       className="input-group-text"
                       style={{
-                        backgroundColor: "#ffffff",
+                        backgroundColor: "#f8faf9",
                         borderColor: "#e1e8e6",
                         color: COLORS.muted,
                       }}
                     >
-                      <i
-                        className="bi bi-envelope"
-                        aria-hidden="true"
-                      />
+                      <i className="bi bi-envelope" aria-hidden="true" />
                     </span>
 
                     <input
@@ -444,14 +428,14 @@ export default function UserProfile() {
                   </div>
                 </div>
 
-                {/* Form Actions */}
+                {/* Form actions */}
                 <div className="d-flex flex-wrap align-items-center gap-2 pt-2">
                   <button
                     type="submit"
-                    className="btn text-white fw-semibold d-inline-flex align-items-center gap-2 px-4 py-2"
+                    className="btn text-white fw-semibold d-inline-flex align-items-center justify-content-center gap-2 px-4 py-2"
                     disabled={loading}
                     style={{
-                      backgroundColor: COLORS.teal,
+                      backgroundColor: COLORS.green,
                       borderRadius: "10px",
                       fontSize: "13px",
                       minHeight: "42px",
@@ -488,6 +472,7 @@ export default function UserProfile() {
                       minHeight: "42px",
                     }}
                   >
+                    <i className="bi bi-arrow-counterclockwise me-2" aria-hidden="true" />
                     Reset
                   </button>
                 </div>
@@ -496,20 +481,17 @@ export default function UserProfile() {
           </div>
         </div>
 
-        {/* Account Summary */}
+        {/* Account summary */}
         <div className="col-12 col-lg-5">
-          <div className="d-flex flex-column gap-3 gap-xl-4">
-            <div
-              className="card"
-              style={cardStyle}
-            >
+          <div className="d-flex flex-column gap-3">
+            <div className="card" style={cardStyle}>
               <div className="card-body p-3 p-md-4">
-                <div className="d-flex align-items-center gap-3 mb-3">
+                <div className="d-flex align-items-center gap-3 mb-4">
                   <div
                     className="d-flex align-items-center justify-content-center flex-shrink-0"
                     style={{
-                      width: "42px",
-                      height: "42px",
+                      width: "44px",
+                      height: "44px",
                       borderRadius: "12px",
                       backgroundColor: COLORS.lightGreen,
                       color: COLORS.green,
@@ -518,25 +500,26 @@ export default function UserProfile() {
                     <i
                       className="bi bi-shield-check"
                       aria-hidden="true"
-                      style={{ fontSize: "19px" }}
+                      style={{ fontSize: "20px" }}
                     />
                   </div>
 
-                  <h5
-                    className="fw-bold mb-0"
-                    style={{ fontSize: "17px" }}
-                  >
-                    Account Summary
-                  </h5>
+                  <div>
+                    <h5 className="fw-bold mb-1" style={{ fontSize: "16px" }}>
+                      Account Summary
+                    </h5>
+
+                    <p
+                      className="mb-0"
+                      style={{ color: COLORS.muted, fontSize: "11px" }}
+                    >
+                      Your current account information
+                    </p>
+                  </div>
                 </div>
 
                 <div className="d-flex justify-content-between align-items-center gap-3 py-3 border-bottom">
-                  <span
-                    style={{
-                      color: COLORS.muted,
-                      fontSize: "12px",
-                    }}
-                  >
+                  <span style={{ color: COLORS.muted, fontSize: "12px" }}>
                     Account Status
                   </span>
 
@@ -548,20 +531,15 @@ export default function UserProfile() {
                       fontSize: "11px",
                     }}
                   >
-                    <i
-                      className="bi bi-check-circle me-1"
-                      aria-hidden="true"
-                    />
+                    <i className="bi bi-check-circle me-1" aria-hidden="true" />
                     Authenticated
                   </span>
                 </div>
 
                 <div className="d-flex justify-content-between align-items-start gap-3 py-3 border-bottom">
                   <span
-                    style={{
-                      color: COLORS.muted,
-                      fontSize: "12px",
-                    }}
+                    className="flex-shrink-0"
+                    style={{ color: COLORS.muted, fontSize: "12px" }}
                   >
                     Full Name
                   </span>
@@ -578,12 +556,10 @@ export default function UserProfile() {
                   </span>
                 </div>
 
-                <div className="d-flex justify-content-between align-items-start gap-3 py-3">
+                <div className="d-flex justify-content-between align-items-start gap-3 pt-3">
                   <span
-                    style={{
-                      color: COLORS.muted,
-                      fontSize: "12px",
-                    }}
+                    className="flex-shrink-0"
+                    style={{ color: COLORS.muted, fontSize: "12px" }}
                   >
                     Email
                   </span>
@@ -602,11 +578,8 @@ export default function UserProfile() {
               </div>
             </div>
 
-            {/* Profile Tip */}
-            <div
-              className="card"
-              style={cardStyle}
-            >
+            {/* Profile tip */}
+            <div className="card" style={cardStyle}>
               <div className="card-body p-3 p-md-4">
                 <div className="d-flex align-items-start gap-3">
                   <div
@@ -627,10 +600,7 @@ export default function UserProfile() {
                   </div>
 
                   <div>
-                    <h6
-                      className="fw-bold mb-2"
-                      style={{ fontSize: "14px" }}
-                    >
+                    <h6 className="fw-bold mb-2" style={{ fontSize: "14px" }}>
                       Keep Your Profile Updated
                     </h6>
 
@@ -642,9 +612,9 @@ export default function UserProfile() {
                         lineHeight: 1.8,
                       }}
                     >
-                      Make sure your account information is correct
-                      when using NearSpot. Your changes are saved
-                      when the server confirms the update.
+                      Make sure your account information is correct when
+                      using NearSpot. Your changes are saved when the
+                      server confirms the update.
                     </p>
                   </div>
                 </div>

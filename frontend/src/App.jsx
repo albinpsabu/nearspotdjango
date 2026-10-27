@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useLocation as useRouterLocation,
@@ -11,6 +10,7 @@ import useNearbySpots from "./hooks/useNearbySpots";
 
 import NearSpotMap from "./components/map/NearSpotMap";
 import NearSpotSidebar from "./components/layout/NearSpotSidebar";
+import NotificationBell from "./components/common/NotificationBell";
 import StatusMessage from "./components/common/StatusMessage";
 import AuthModal from "./components/auth/AuthModal";
 import HiddenSpotForm from "./components/spots/HiddenSpotForm";
@@ -386,6 +386,8 @@ function App() {
     loading: locationLoading,
     error: locationError,
     getCurrentLocation,
+    startWatchingLocation,
+    stopWatchingLocation,
   } = useLocation();
 
   // ============================================================
@@ -498,7 +500,12 @@ function App() {
 
   useEffect(() => {
     getCurrentLocation();
-  }, [getCurrentLocation]);
+    startWatchingLocation();
+
+    return () => {
+      stopWatchingLocation();
+    };
+  }, [getCurrentLocation, startWatchingLocation, stopWatchingLocation]);
 
   useEffect(() => {
     if (!location || hasSelectedPlaceRef.current) return;
@@ -833,6 +840,12 @@ function App() {
         }}
       >
         {/* GPS BUTTON */}
+        {/* NOTIFICATION BELL */}
+        {isAuthenticated && (
+          <div className="flex-shrink-0">
+            <NotificationBell />
+          </div>
+        )}
         <button
           type="button"
           className="btn bg-white border shadow-sm rounded-4 d-flex align-items-center gap-2 px-3 py-2"

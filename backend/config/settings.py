@@ -39,7 +39,7 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "10.234.226.32",
-    
+    "executed-footwear-baseline-completion.trycloudflare.com",    
 ]
 
 
@@ -50,7 +50,6 @@ ALLOWED_HOSTS = [
 INSTALLED_APPS = [
     # ASGI server
     "daphne",
-
 
     # Django applications
     "django.contrib.admin",
@@ -73,8 +72,6 @@ INSTALLED_APPS = [
     "spots",
     "places",
     "navigation",
-    
-    
 ]
 
 
@@ -93,7 +90,24 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ASGI_APPLICATION="config.asgi.application"
+ASGI_APPLICATION = "config.asgi.application"
+
+
+# ============================================================
+# DJANGO CHANNELS CONFIGURATION
+# ============================================================
+
+# In-memory channel layer for local development.
+# No Redis server is required.
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
+
+
+
 # ============================================================
 # GEODJANGO CONFIGURATION
 # ============================================================
@@ -175,10 +189,8 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-]
-
-
-# ============================================================
+    "https://coupons-completed-dealers-scuba.trycloudflare.com",
+]# ============================================================
 # URL CONFIGURATION
 # ============================================================
 
@@ -227,6 +239,12 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": (
             "django.contrib.auth.password_validation."
             "MinimumLengthValidator"
+        ),
+    },
+    {
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "CommonPasswordValidator"
         ),
     },
     {

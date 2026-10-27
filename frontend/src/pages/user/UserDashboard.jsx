@@ -1,17 +1,54 @@
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import api from "../../services/api";
 
-const cardStyle = {
-  borderRadius: "16px",
-  border: "1px solid #edf1ef",
-  boxShadow: "0 4px 18px rgba(20, 50, 45, 0.04)",
-  backgroundColor: "#ffffff",
+const C = {
+  heading: "#1d2b2e",
+  muted: "#819092",
+  green: "#087f68",
+  light: "#e6faf4",
+  border: "#e8efec",
 };
 
-function UserDashboard() {
-  const navigate = useNavigate();
+const cardStyle = {
+  backgroundColor: "#ffffff",
+  border: `1px solid ${C.border}`,
+  borderRadius: "14px",
+  boxShadow: "0 3px 12px rgba(20, 50, 45, 0.035)",
+};
+
+const getStatusStyle = (status) => {
+  const styles = {
+    APPROVED: { background: "#e6faf4", color: "#087f68" },
+    PENDING: { background: "#fff5df", color: "#a56b00" },
+    REJECTED: { background: "#fdecec", color: "#c0392b" },
+    CANCELLED: { background: "#eef1f2", color: "#647477" },
+  };
+
+  return styles[status] || {
+    background: "#eef1f2",
+    color: "#647477",
+  };
+};
+
+const formatDate = (value) => {
+  if (!value) return "Date unavailable";
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? "Date unavailable"
+    : date.toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+};
+
+export default function UserDashboard() {
+  const { user } = useAuth();
 
   const [spots, setSpots] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,37 +57,29 @@ function UserDashboard() {
   useEffect(() => {
     const controller = new AbortController();
 
-    const fetchSubmissions = async () => {
+    const fetchSpots = async () => {
+      setLoading(true);
+      setError("");
+
       try {
-        setLoading(true);
-        setError("");
+        let url = "/spots/my/";
+        let allSpots = [];
 
-        const allSpots = [];
-        const visitedUrls = new Set();
-        let nextUrl = "/spots/my/";
-
-        // Support both paginated and non-paginated DRF responses.
-        while (nextUrl) {
-          if (visitedUrls.has(nextUrl)) {
-            throw new Error("Repeated pagination URL detected.");
-          }
-
-          visitedUrls.add(nextUrl);
-
-          const response = await api.get(nextUrl, {
+        while (url) {
+          const response = await api.get(url, {
             signal: controller.signal,
           });
 
           const data = response.data;
 
           if (Array.isArray(data)) {
-            allSpots.push(...data);
-            nextUrl = null;
-          } else if (Array.isArray(data?.results)) {
-            allSpots.push(...data.results);
-            nextUrl = data.next || null;
+            allSpots = [...allSpots, ...data];
+            url = null;
+          } else if (data && Array.isArray(data.results)) {
+            allSpots = [...allSpots, ...data.results];
+            url = data.next || null;
           } else {
-            throw new Error("Unexpected submissions response.");
+            url = null;
           }
         }
 
@@ -58,14 +87,14 @@ function UserDashboard() {
           setSpots(allSpots);
         }
       } catch (err) {
-        if (controller.signal.aborted) return;
-
-        console.error("Failed to load submissions:", err);
-
-        setError(
-          err.response?.data?.detail ||
-            "Unable to load your submissions. Please try again."
-        );
+        if (
+          !controller.signal.aborted &&
+          err.name !== "CanceledError" &&
+          err.code !== "ERR_CANCELED"
+        ) {
+          console.error("Failed to fetch dashboard spots:", err);
+          setError("Unable to load your submissions.");
+        }
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -73,235 +102,145 @@ function UserDashboard() {
       }
     };
 
-    fetchSubmissions();
+    fetchSpots();
 
     return () => controller.abort();
   }, []);
 
-  const totalSpots = spots.length;
-
-  const approvedSpots = spots.filter(
-    (spot) => spot.status?.toUpperCase() === "APPROVED"
+  const approved = spots.filter(
+    (spot) => spot.status === "APPROVED"
   ).length;
 
-  const pendingSpots = spots.filter(
-    (spot) => spot.status?.toUpperCase() === "PENDING"
+  const pending = spots.filter(
+    (spot) => spot.status === "PENDING"
   ).length;
 
-  const rejectedSpots = spots.filter(
-    (spot) => spot.status?.toUpperCase() === "REJECTED"
+  const rejected = spots.filter(
+    (spot) => spot.status === "REJECTED"
   ).length;
 
   const recentSpots = [...spots]
     .sort(
       (a, b) =>
-        new Date(b.created_at || 0).getTime() -
-        new Date(a.created_at || 0).getTime()
+        new Date(b.created_at || 0) -
+        new Date(a.created_at || 0)
     )
-    .slice(0, 5);
+    .slice(0, 4);
 
-  const statistics = [
+  const statCards = [
     {
-      title: "Total Submissions",
-      value: totalSpots,
+      label: "Total Submissions",
+      value: spots.length,
       icon: "bi-geo-alt",
-      color: "#087f68",
       background: "#e6faf4",
-      description: "All submitted spots",
+      foreground: "#087f68",
     },
     {
-      title: "Approved Spots",
-      value: approvedSpots,
+      label: "Approved",
+      value: approved,
       icon: "bi-check-circle",
-      color: "#168a70",
       background: "#e6faf4",
-      description: "Successfully approved",
+      foreground: "#087f68",
     },
     {
-      title: "Pending Review",
-      value: pendingSpots,
-      icon: "bi-clock-history",
-      color: "#b78012",
+      label: "Pending",
+      value: pending,
+      icon: "bi-hourglass-split",
       background: "#fff5df",
-      description: "Awaiting verification",
+      foreground: "#a56b00",
     },
     {
-      title: "Rejected Spots",
-      value: rejectedSpots,
+      label: "Rejected",
+      value: rejected,
       icon: "bi-x-circle",
-      color: "#c64d55",
-      background: "#fdeced",
-      description: "Not approved",
+      background: "#fdecec",
+      foreground: "#c0392b",
     },
   ];
-
-  const quickLinks = [
-    {
-      title: "My Profile",
-      description: "View and update your account information.",
-      icon: "bi-person",
-      path: "/user/profile",
-    },
-    {
-      title: "My Reviews",
-      description: "Manage your reviews and ratings.",
-      icon: "bi-star",
-      path: "/user/reviews",
-    },
-    {
-      title: "Saved Spots",
-      description: "Revisit your bookmarked places.",
-      icon: "bi-bookmark",
-      path: "/user/saved",
-    },
-  ];
-
-  const getStatusStyle = (status) => {
-    switch (status?.toUpperCase()) {
-      case "APPROVED":
-        return {
-          backgroundColor: "#e6faf4",
-          color: "#087f68",
-        };
-      case "PENDING":
-        return {
-          backgroundColor: "#fff4d6",
-          color: "#946c00",
-        };
-      case "REJECTED":
-        return {
-          backgroundColor: "#fdecec",
-          color: "#c0392b",
-        };
-      default:
-        return {
-          backgroundColor: "#edf1f1",
-          color: "#536365",
-        };
-    }
-  };
-
-  const formatDate = (value) => {
-    if (!value) return "—";
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-      ? "—"
-      : date.toLocaleDateString();
-  };
 
   return (
     <div
-      className="w-100"
+      className="d-flex flex-column w-100 h-100"
       style={{
-        color: "#1d2b2e",
+        minHeight: 0,
+        overflow: "hidden",
+        color: C.heading,
       }}
     >
-      {/* Dashboard Heading */}
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <div>
+      {/* Heading */}
+      <div className="d-flex justify-content-between align-items-center gap-3 flex-shrink-0 pb-3">
+        <div style={{ minWidth: 0 }}>
           <h3
-            className="fw-bold mb-2"
+            className="fw-bold mb-1 text-truncate"
             style={{
-              fontSize: "26px",
-              letterSpacing: "-0.6px",
+              fontSize: "clamp(20px, 2vw, 28px)",
+              letterSpacing: "-0.7px",
             }}
           >
-            Welcome to NearSpot
+            Welcome back, {user?.name?.split(" ")[0] || "there"}!
           </h3>
 
           <p
-            className="mb-0"
-            style={{
-              color: "#819092",
-              fontSize: "14px",
-            }}
+            className="mb-0 text-truncate"
+            style={{ color: C.muted, fontSize: "12px" }}
           >
-            Here's an overview of your spot submissions and activity.
+            Here's an overview of your NearSpot activity.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn d-flex align-items-center gap-2 text-white fw-semibold px-4 py-2"
-          onClick={() => navigate("/")}
+        <Link
+          to="/"
+          className="btn text-white fw-semibold d-inline-flex align-items-center gap-2 flex-shrink-0 px-3 py-2"
           style={{
-            backgroundColor: "#20cfa7",
-            borderRadius: "10px",
-            fontSize: "13px",
-            minHeight: "42px",
+            backgroundColor: C.green,
+            borderRadius: "9px",
+            fontSize: "11px",
           }}
         >
-          <i
-            className="bi bi-compass"
-            aria-hidden="true"
-            style={{ fontSize: "16px" }}
-          />
-          Explore Map
-        </button>
+          <i className="bi bi-compass" aria-hidden="true" />
+          <span className="d-none d-sm-inline">Explore Spots</span>
+          <span className="d-sm-none">Explore</span>
+        </Link>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="row g-3 g-xl-4 mb-4">
-        {statistics.map((item) => (
-          <div
-            className="col-12 col-sm-6 col-xl-3"
-            key={item.title}
-          >
-            <div
-              className="card h-100"
-              style={cardStyle}
-            >
-              <div className="card-body p-4">
-                <div className="d-flex align-items-start justify-content-between gap-2">
+      {/* Statistics */}
+      <div className="row g-2 flex-shrink-0 mb-3">
+        {statCards.map((stat) => (
+          <div className="col-6 col-xl-3" key={stat.label}>
+            <div className="card h-100" style={cardStyle}>
+              <div className="card-body p-2 p-md-3">
+                <div className="d-flex justify-content-between align-items-center gap-2">
                   <div style={{ minWidth: 0 }}>
                     <p
-                      className="mb-3 fw-medium"
+                      className="mb-1 text-truncate"
                       style={{
-                        color: "#77878a",
-                        fontSize: "13px",
+                        color: C.muted,
+                        fontSize: "clamp(10px, 1vw, 12px)",
                       }}
                     >
-                      {item.title}
+                      {stat.label}
                     </p>
 
-                    <h2
-                      className="fw-bold mb-2"
-                      style={{
-                        fontSize: "32px",
-                        letterSpacing: "-0.7px",
-                      }}
+                    <h3
+                      className="fw-bold mb-0"
+                      style={{ fontSize: "clamp(21px, 2vw, 28px)" }}
                     >
-                      {loading ? "..." : error ? "—" : item.value}
-                    </h2>
-
-                    <div
-                      style={{
-                        color: "#97a4a6",
-                        fontSize: "11px",
-                      }}
-                    >
-                      {item.description}
-                    </div>
+                      {loading ? "—" : stat.value}
+                    </h3>
                   </div>
 
                   <div
-                    className="d-flex align-items-center justify-content-center flex-shrink-0"
+                    className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
                     style={{
-                      width: "48px",
-                      height: "48px",
-                      borderRadius: "13px",
-                      backgroundColor: item.background,
-                      color: item.color,
+                      width: "clamp(32px, 3.5vw, 42px)",
+                      height: "clamp(32px, 3.5vw, 42px)",
+                      backgroundColor: stat.background,
+                      color: stat.foreground,
                     }}
                   >
                     <i
-                      className={`bi ${item.icon}`}
+                      className={`bi ${stat.icon}`}
                       aria-hidden="true"
-                      style={{
-                        fontSize: "21px",
-                        lineHeight: 1,
-                      }}
                     />
                   </div>
                 </div>
@@ -311,285 +250,150 @@ function UserDashboard() {
         ))}
       </div>
 
-      {/* Recent Submissions */}
-      <div
-        className="card mb-4"
-        style={cardStyle}
+      {/* Recent submissions fills remaining screen */}
+      <section
+        className="card flex-grow-1"
+        style={{
+          ...cardStyle,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
       >
-        <div className="card-body p-3 p-md-4">
-          <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+        <div className="card-body p-3 p-md-4 d-flex flex-column">
+          <div className="d-flex justify-content-between align-items-center gap-3 mb-3 flex-shrink-0">
             <div>
               <h5
-                className="fw-bold mb-2"
-                style={{ fontSize: "17px" }}
+                className="fw-bold mb-1"
+                style={{ fontSize: "15px" }}
               >
                 Recent Submissions
               </h5>
 
               <p
                 className="mb-0"
-                style={{
-                  color: "#819092",
-                  fontSize: "12px",
-                }}
+                style={{ color: C.muted, fontSize: "11px" }}
               >
-                Track the latest spots you've submitted.
+                Your latest submitted places
               </p>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-outline-secondary rounded-3 px-3"
-              onClick={() => navigate("/user/submissions")}
-              style={{ fontSize: "12px" }}
+            <Link
+              to="/user/submissions"
+              className="text-decoration-none fw-semibold flex-shrink-0"
+              style={{ color: C.green, fontSize: "11px" }}
             >
-              View All
-              <i
-                className="bi bi-arrow-right ms-2"
-                aria-hidden="true"
-              />
-            </button>
+              View all
+              <i className="bi bi-arrow-right ms-1" aria-hidden="true" />
+            </Link>
           </div>
 
-          {loading ? (
-            <div className="text-center py-5">
-              <div
-                className="spinner-border"
-                style={{
-                  color: "#20cfa7",
-                  width: "32px",
-                  height: "32px",
-                }}
-                role="status"
-              >
-                <span className="visually-hidden">Loading...</span>
-              </div>
-
-              <p
-                className="mt-3 mb-0"
-                style={{
-                  color: "#819092",
-                  fontSize: "13px",
-                }}
-              >
-                Loading your submissions...
-              </p>
-            </div>
-          ) : error ? (
+          {error ? (
             <div
-              className="alert alert-warning mb-0"
+              className="alert alert-danger mb-0"
               role="alert"
+              style={{ fontSize: "12px" }}
             >
               {error}
             </div>
-          ) : spots.length === 0 ? (
-            <div className="text-center py-5">
+          ) : loading ? (
+            <div className="flex-grow-1 d-flex flex-column align-items-center justify-content-center">
               <div
-                className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
-                style={{
-                  width: "76px",
-                  height: "76px",
-                  backgroundColor: "#e6faf4",
-                  color: "#20cfa7",
-                }}
-              >
-                <i
-                  className="bi bi-geo-alt"
-                  aria-hidden="true"
-                  style={{ fontSize: "32px" }}
-                />
-              </div>
-
-              <h6 className="fw-bold mb-2">
-                No submissions yet
-              </h6>
+                className="spinner-border spinner-border-sm"
+                style={{ color: C.green }}
+                role="status"
+                aria-label="Loading submissions"
+              />
 
               <p
-                style={{
-                  color: "#819092",
-                  fontSize: "13px",
-                }}
+                className="mt-2 mb-0"
+                style={{ color: C.muted, fontSize: "12px" }}
               >
-                Discover a place and submit your first hidden spot.
+                Loading submissions...
+              </p>
+            </div>
+          ) : recentSpots.length === 0 ? (
+            <div className="flex-grow-1 d-flex flex-column align-items-center justify-content-center text-center">
+              <i
+                className="bi bi-geo"
+                style={{ fontSize: "34px", color: C.green }}
+                aria-hidden="true"
+              />
+
+              <p className="fw-semibold mt-3 mb-1" style={{ fontSize: "13px" }}>
+                No submissions yet
               </p>
 
-              <button
-                type="button"
-                className="btn text-white fw-semibold px-4 py-2"
-                onClick={() => navigate("/")}
-                style={{
-                  backgroundColor: "#20cfa7",
-                  borderRadius: "10px",
-                  fontSize: "13px",
-                }}
+              <p
+                className="mb-3"
+                style={{ color: C.muted, fontSize: "12px" }}
               >
-                Explore NearSpot
-              </button>
+                Share a hidden gem with the community.
+              </p>
+
+              <Link
+                to="/"
+                className="btn btn-sm text-white"
+                style={{ backgroundColor: C.green, fontSize: "12px" }}
+              >
+                Explore Spots
+              </Link>
             </div>
           ) : (
-            <div className="table-responsive">
-              <table className="table align-middle mb-0">
-                <thead>
-                  <tr
-                    style={{
-                      color: "#819092",
-                      fontSize: "12px",
-                    }}
+            <div className="flex-grow-1">
+              {recentSpots.map((spot) => (
+                <div
+                  key={spot.id}
+                  className="d-flex justify-content-between align-items-center gap-3 py-3 border-bottom"
+                >
+                  <div
+                    className="d-flex align-items-center gap-3"
+                    style={{ minWidth: 0 }}
                   >
-                    <th className="py-3 fw-semibold">
-                      Spot Name
-                    </th>
-                    <th className="py-3 fw-semibold">
-                      Category
-                    </th>
-                    <th className="py-3 fw-semibold">
-                      Status
-                    </th>
-                    <th className="py-3 fw-semibold">
-                      Submitted
-                    </th>
-                  </tr>
-                </thead>
+                    <div
+                      className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+                      style={{
+                        width: "40px",
+                        height: "40px",
+                        backgroundColor: C.light,
+                        color: C.green,
+                      }}
+                    >
+                      <i className="bi bi-geo-alt" aria-hidden="true" />
+                    </div>
 
-                <tbody>
-                  {recentSpots.map((spot) => (
-                    <tr key={spot.id}>
-                      <td
-                        className="py-3 fw-semibold"
-                        style={{
-                          color: "#26373a",
-                          fontSize: "13px",
-                        }}
+                    <div style={{ minWidth: 0 }}>
+                      <p
+                        className="fw-semibold mb-1 text-truncate"
+                        style={{ fontSize: "13px" }}
                       >
-                        {spot.name || "Untitled spot"}
-                      </td>
+                        {spot.name || "Unnamed spot"}
+                      </p>
 
-                      <td
-                        className="py-3"
-                        style={{
-                          color: "#687779",
-                          fontSize: "13px",
-                        }}
-                      >
-                        {spot.category &&
-                        typeof spot.category === "object"
-                          ? spot.category.name || "Uncategorized"
-                          : spot.category_name || "Uncategorized"}
-                      </td>
-
-                      <td className="py-3">
-                        <span
-                          className="badge rounded-pill px-3 py-2"
-                          style={{
-                            ...getStatusStyle(spot.status),
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {spot.status || "Unknown"}
-                        </span>
-                      </td>
-
-                      <td
-                        className="py-3"
-                        style={{
-                          color: "#819092",
-                          fontSize: "12px",
-                        }}
+                      <p
+                        className="mb-0"
+                        style={{ color: C.muted, fontSize: "11px" }}
                       >
                         {formatDate(spot.created_at)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </p>
+                    </div>
+                  </div>
+
+                  <span
+                    className="badge rounded-pill flex-shrink-0"
+                    style={{
+                      ...getStatusStyle(spot.status),
+                      fontSize: "10px",
+                      padding: "7px 9px",
+                    }}
+                  >
+                    {spot.status || "Unknown"}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
-
-      {/* Quick Access */}
-      <div className="mb-3">
-        <h5
-          className="fw-bold mb-3"
-          style={{ fontSize: "17px" }}
-        >
-          Quick Access
-        </h5>
-
-        <div className="row g-3 g-xl-4">
-          {quickLinks.map((item) => (
-            <div
-              className="col-12 col-md-4"
-              key={item.title}
-            >
-              <button
-                type="button"
-                className="card w-100 h-100 text-start"
-                onClick={() => navigate(item.path)}
-                style={{
-                  ...cardStyle,
-                  cursor: "pointer",
-                }}
-              >
-                <div className="card-body p-4 d-flex align-items-center gap-3">
-                  <div
-                    className="d-flex align-items-center justify-content-center flex-shrink-0"
-                    style={{
-                      width: "48px",
-                      height: "48px",
-                      borderRadius: "13px",
-                      backgroundColor: "#e6faf4",
-                      color: "#087f68",
-                    }}
-                  >
-                    <i
-                      className={`bi ${item.icon}`}
-                      aria-hidden="true"
-                      style={{
-                        fontSize: "21px",
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex-grow-1">
-                    <h6
-                      className="fw-bold mb-1"
-                      style={{
-                        fontSize: "14px",
-                        color: "#26373a",
-                      }}
-                    >
-                      {item.title}
-                    </h6>
-
-                    <p
-                      className="mb-0"
-                      style={{
-                        fontSize: "12px",
-                        color: "#819092",
-                      }}
-                    >
-                      {item.description}
-                    </p>
-                  </div>
-
-                  <i
-                    className="bi bi-chevron-right flex-shrink-0"
-                    aria-hidden="true"
-                    style={{
-                      color: "#9ca9ab",
-                      fontSize: "13px",
-                    }}
-                  />
-                </div>
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+      </section>
     </div>
   );
 }
-
-export default UserDashboard;

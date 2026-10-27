@@ -1,7 +1,7 @@
 
 import { useAuth } from "../../context/AuthContext";
 import { useLocation } from "react-router-dom";
-
+import NotificationBell from "../common/NotificationBell";
 // ============================================================
 // ADMIN TOPBAR
 // ============================================================
@@ -134,7 +134,7 @@ function AdminTopbar({
 
       <div className="d-flex align-items-center gap-2 gap-md-3 flex-shrink-0">
         {/* ADMIN STATUS */}
-
+        <NotificationBell />
         <div
           className="d-none d-md-flex align-items-center gap-2 px-3 py-2 rounded-pill"
           style={{

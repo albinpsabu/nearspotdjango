@@ -514,3 +514,44 @@ class OSMDiscoveryArea(models.Model):
             f"{self.south}, {self.west} → "
             f"{self.north}, {self.east}"
         )
+
+
+
+
+
+class Notification(models.Model):
+    class NotificationType(models.TextChoices):
+        SPOT_PENDING = "spot.pending", "Spot Pending"
+        SPOT_APPROVED = "spot.approved", "Spot Approved"
+        SPOT_REJECTED = "spot.rejected", "Spot Rejected"
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+
+    notification_type = models.CharField(
+        max_length=50,
+        choices=NotificationType.choices,
+    )
+
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+
+    spot = models.ForeignKey(
+        HiddenSpot,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.recipient} - {self.title}"

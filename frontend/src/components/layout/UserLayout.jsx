@@ -25,16 +25,24 @@ export default function UserLayout() {
 
   return (
     <div
-      className="min-vh-100"
-      style={{ backgroundColor: "#f7f9f9", color: "#1d2b2e" }}
+      className="d-flex flex-column"
+      style={{
+        height: "100dvh",
+        width: "100%",
+        overflow: "hidden",
+        backgroundColor: "#f7f9f9",
+        color: "#1d2b2e",
+      }}
     >
-      {/* User navigation */}
-      <header className="bg-white border-bottom sticky-top">
-        <nav className="navbar navbar-expand-lg">
+      <header
+        className="bg-white border-bottom flex-shrink-0"
+        style={{ zIndex: 10 }}
+      >
+        <nav className="navbar navbar-expand-lg py-0">
           <div className="container-fluid px-3 px-md-4 py-2">
             <NavLink
               to="/"
-              className="navbar-brand fw-bold fs-4"
+              className="navbar-brand fw-bold fs-4 mb-0"
               style={{ color: "#1d2b2e" }}
             >
               <span style={{ color: "#20cfa7" }}>Near</span>Spot
@@ -74,13 +82,12 @@ export default function UserLayout() {
                 ))}
               </ul>
 
-              <div className="d-flex align-items-center gap-3">
+              <div className="d-flex align-items-center gap-3 py-2 py-lg-0">
                 <div
-                  className="rounded-circle d-flex align-items-center justify-content-center fw-semibold"
+                  className="rounded-circle d-flex align-items-center justify-content-center fw-semibold flex-shrink-0"
                   style={{
                     width: "36px",
                     height: "36px",
-                    minWidth: "36px",
                     backgroundColor: "#e0f8f1",
                     color: "#087f68",
                   }}
@@ -88,14 +95,14 @@ export default function UserLayout() {
                   {user?.name?.charAt(0)?.toUpperCase() || "U"}
                 </div>
 
-                <span className="fw-medium">
+                <span className="fw-medium text-truncate">
                   {user?.name || "User"}
                 </span>
 
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="btn btn-outline-secondary btn-sm"
+                  className="btn btn-outline-secondary btn-sm flex-shrink-0"
                 >
                   Logout
                 </button>
@@ -105,8 +112,14 @@ export default function UserLayout() {
         </nav>
       </header>
 
-      {/* User page content */}
-      <main className="container-fluid px-3 px-md-4 py-4">
+      <main
+        className="flex-grow-1"
+        style={{
+          minHeight: 0,
+          overflow: "hidden",
+          padding: "16px 24px",
+        }}
+      >
         <Outlet />
       </main>
     </div>

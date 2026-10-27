@@ -1,4 +1,4 @@
-
+from django.db import transaction
 from rest_framework import serializers
 from django.contrib.gis.geos import Point
 
@@ -18,6 +18,7 @@ from .models import (
     ExternalPlace,
     SavedExternalPlace,
     ExternalPlaceReview,
+    Notification,
 )
 
 
@@ -1248,6 +1249,7 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
 
         return longitude
 
+
     def create(self, validated_data):
         latitude = validated_data.pop("latitude")
         longitude = validated_data.pop("longitude")
@@ -1265,6 +1267,32 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
             status=HiddenSpot.Status.PENDING,
             **validated_data,
         )
+
+        # Notify staff only after the database transaction commits.
+        def notify_staff():
+            from asgiref.sync import async_to_sync
+            from channels.layers import get_channel_layer
+
+            channel_layer = get_channel_layer()
+
+            if channel_layer is None:
+                return
+
+            async_to_sync(channel_layer.group_send)(
+                "spot_review_staff",
+                {
+                    "type": "spot.notification",
+                    "notification_type": "spot.pending",
+                    "data": {
+                        "spot_id": spot.pk,
+                        "name": spot.name,
+                        "status": spot.status,
+                        "message": "A new spot is awaiting review.",
+                    },
+                },
+            )
+
+        transaction.on_commit(notify_staff)
 
         return spot
 
@@ -2343,4 +2371,28 @@ class MyExternalReviewSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+        read_only_fields = fields
+
+
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    spot_name = serializers.CharField(
+        source="spot.name",
+        read_only=True,
+        default=None,
+    )
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "notification_type",
+            "title",
+            "message",
+            "spot",
+            "spot_name",
+            "is_read",
+            "created_at",
+        ]
         read_only_fields = fields

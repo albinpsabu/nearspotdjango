@@ -1,10 +1,13 @@
-// ============================================================
-// IMPORTS
-// ============================================================
+
+ // ============================================================
+ // IMPORTS
+ // ============================================================
 
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 import PlaceSearch from "../location/PlaceSearch";
+import NotificationBell from "../common/NotificationBell";
 
 // ============================================================
 // TOP NAVIGATION COMPONENT
@@ -12,6 +15,7 @@ import PlaceSearch from "../location/PlaceSearch";
 
 function TopNavigation({ onLocationSelect }) {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   // ============================================================
   // HANDLE PROFILE CLICK
@@ -145,6 +149,16 @@ function TopNavigation({ onLocationSelect }) {
 
         Location active
       </div>
+
+      {/* ==================================================
+          NOTIFICATION BELL
+      ================================================== */}
+
+      {isAuthenticated && (
+        <div className="pe-auto flex-shrink-0">
+          <NotificationBell />
+        </div>
+      )}
 
       {/* ==================================================
           PROFILE / LOGIN

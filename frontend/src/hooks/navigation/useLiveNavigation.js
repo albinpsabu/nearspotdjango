@@ -213,8 +213,8 @@ export default function useLiveNavigation() {
               "GPS accuracy is currently poor. Waiting for a more accurate location."
             );
 
-            setCurrentLocation(null);
-
+            // Keep the last valid position while waiting
+            // for a more accurate GPS update.
             return;
           }
 
@@ -272,10 +272,10 @@ export default function useLiveNavigation() {
           }
 
           // Temporary GPS errors do not stop watchPosition.
-          // The browser may recover automatically.
+          // Keep the last valid position temporarily while
+          // waiting for another update. The stale-location
+          // monitor will clear it if updates do not resume.
           setLocationError(message);
-
-          setCurrentLocation(null);
         },
 
         // ----------------------------------------------------

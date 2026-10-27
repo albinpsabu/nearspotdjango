@@ -1,4 +1,4 @@
-
+import NotificationBell from "../common/NotificationBell";
 import { useAuth } from "../../context/AuthContext";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -153,6 +153,7 @@ function UserTopbar({
       {/* Right: User Badge and Profile */}
       <div className="d-flex align-items-center gap-2 gap-md-4 flex-shrink-0">
         {/* User Badge */}
+        <NotificationBell />
         <div
           className="d-none d-md-flex align-items-center gap-2 px-3 py-2 rounded-pill"
           style={{
