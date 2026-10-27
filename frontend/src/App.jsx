@@ -328,33 +328,70 @@ function App() {
       return;
     }
 
+    // Require exactly 3 images before creating the spot.
+    if (
+      !Array.isArray(formData.images) ||
+      formData.images.length !== 3
+    ) {
+      showMessage(
+        "Please select exactly 3 images before submitting.",
+        "danger"
+      );
+      return;
+    }
+
     setSubmittingSpot(true);
     setActionMessage("");
 
     try {
-      const { spot, failedImages } =
-        await submitHiddenSpot(formData);
+      const result = await submitHiddenSpot(formData);
 
+      const {
+        spot,
+        failedImages = [],
+        uploadedImages = [],
+        isComplete,
+      } = result;
+
+      // A spot record may already exist even if an image upload fails.
+      // Close the form to prevent accidentally creating a duplicate.
       setShowSpotForm(false);
       setIsSelectingSpot(false);
       setSelectedSpotLocation(null);
 
-      if (failedImages.length > 0) {
+      if (
+        isComplete === true &&
+        failedImages.length === 0 &&
+        uploadedImages.length === 3
+      ) {
         showMessage(
-          `HiddenSpot #${spot.id} was submitted for review, ` +
-            `but ${failedImages.length} image(s) failed to upload.`,
-          "warning"
-        );
-      } else {
-        showMessage(
-          "HiddenSpot submitted successfully! " +
+          "HiddenSpot submitted successfully! All 3 images uploaded. " +
             "Your submission is now pending approval.",
           "success"
+        );
+      } else {
+        const failedNames = failedImages
+          .map((image) => image.filename)
+          .filter(Boolean);
+
+        const failedDetails = failedNames.length
+          ? ` Failed images: ${failedNames.join(", ")}.`
+          : "";
+
+        showMessage(
+          `HiddenSpot #${spot.id} was created, but all 3 images were not uploaded. ` +
+            "The submission is incomplete and must not be considered ready for approval." +
+            failedDetails,
+          "warning"
         );
       }
     } catch (error) {
       console.error("HiddenSpot submission failed:", error);
-      showMessage(getApiErrorMessage(error), "danger");
+
+      showMessage(
+        error?.message || getApiErrorMessage(error),
+        "danger"
+      );
     } finally {
       setSubmittingSpot(false);
     }
@@ -598,8 +635,7 @@ function App() {
   // ============================================================
   // OPENSTREETMAP NOMINATIM SEARCH
   // ============================================================
-
-  const handleSearch = async (event) => {
+    const handleSearch = async (event) => {
     event.preventDefault();
 
     const query = searchQuery.trim();

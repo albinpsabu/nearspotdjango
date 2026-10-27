@@ -53,8 +53,16 @@ class CategorySerializer(serializers.ModelSerializer):
 class HiddenSpotSerializer(serializers.ModelSerializer):
 
     name = serializers.CharField(
+    required=True,
+    allow_blank=True,
+    )
+
+    address = serializers.CharField(
         required=True,
-        allow_blank=True,
+        allow_blank=False,
+        allow_null=False,
+        max_length=255,
+        trim_whitespace=True,
     )
 
     latitude = serializers.FloatField(write_only=True)
@@ -67,6 +75,7 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "category",
+            "address",
             "latitude",
             "longitude",
             "status",
@@ -87,6 +96,16 @@ class HiddenSpotSerializer(serializers.ModelSerializer):
             )
 
         return name
+    
+    def validate_address(self, address):
+        address = address.strip()
+
+        if not address:
+            raise serializers.ValidationError(
+                "A landmark is required."
+            )
+
+        return address
 
     def validate_description(self, description):
         return description.strip()
@@ -1705,7 +1724,9 @@ class CommunityVerificationSummarySerializer(serializers.Serializer):
 # ============================================================
 # Validates image/video types and compresses uploaded files.
 
+
 class SpotMediaSerializer(serializers.ModelSerializer):
+    MAX_IMAGES_PER_SPOT = 3
 
     class Meta:
         model = SpotMedia
@@ -1724,6 +1745,7 @@ class SpotMediaSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         file = attrs.get("file")
         media_type = attrs.get("media_type")
+        spot = attrs.get("spot")
 
         if not file:
             raise serializers.ValidationError({
@@ -1731,7 +1753,6 @@ class SpotMediaSerializer(serializers.ModelSerializer):
             })
 
         if media_type == SpotMedia.MediaType.IMAGE:
-
             allowed_types = [
                 "image/jpeg",
                 "image/png",
@@ -1740,9 +1761,7 @@ class SpotMediaSerializer(serializers.ModelSerializer):
 
             if file.content_type not in allowed_types:
                 raise serializers.ValidationError({
-                    "file": (
-                        "Only JPG, PNG, and WEBP images are allowed."
-                    )
+                    "file": "Only JPG, PNG, and WEBP images are allowed."
                 })
 
             if file.size > 10 * 1024 * 1024:
@@ -1750,8 +1769,22 @@ class SpotMediaSerializer(serializers.ModelSerializer):
                     "file": "Image size cannot exceed 10 MB."
                 })
 
-        elif media_type == SpotMedia.MediaType.VIDEO:
+            # Count existing images for this spot.
+            # The spot is created before its media is uploaded.
+            if spot:
+                existing_images = spot.media.filter(
+                    media_type=SpotMedia.MediaType.IMAGE
+                ).count()
 
+                if existing_images >= self.MAX_IMAGES_PER_SPOT:
+                    raise serializers.ValidationError({
+                        "file": (
+                            "A hidden spot can have a maximum "
+                            "of 3 images."
+                        )
+                    })
+
+        elif media_type == SpotMedia.MediaType.VIDEO:
             allowed_types = [
                 "video/mp4",
                 "video/webm",
@@ -1788,12 +1821,10 @@ class SpotMediaSerializer(serializers.ModelSerializer):
         media_type = validated_data["media_type"]
 
         if media_type == SpotMedia.MediaType.IMAGE:
-            optimized_file = compress_image(file)
-            validated_data["file"] = optimized_file
+            validated_data["file"] = compress_image(file)
 
         elif media_type == SpotMedia.MediaType.VIDEO:
-            optimized_file = compress_video(file)
-            validated_data["file"] = optimized_file
+            validated_data["file"] = compress_video(file)
 
         return super().create(validated_data)
 

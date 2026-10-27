@@ -12,7 +12,7 @@ const INITIAL_FORM = {
   address: "",
 };
 
-const MAX_IMAGES = 5;
+const REQUIRED_IMAGES = 3;
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const ALLOWED_IMAGE_TYPES = [
@@ -81,15 +81,21 @@ function HiddenSpotForm({
       event.target.files || []
     );
 
-    if (selectedFiles.length > MAX_IMAGES) {
+    // Exactly three images must be selected.
+    if (selectedFiles.length !== REQUIRED_IMAGES) {
       setImages([]);
+
       setErrors((previous) => ({
         ...previous,
-        images: `You can upload a maximum of ${MAX_IMAGES} images.`,
+        images: "Please select exactly 3 images.",
       }));
+
+      // Allow the user to select the same files again.
+      event.target.value = "";
       return;
     }
 
+    // Validate image type and size.
     const invalidFile = selectedFiles.find(
       (file) =>
         !ALLOWED_IMAGE_TYPES.includes(file.type) ||
@@ -98,11 +104,14 @@ function HiddenSpotForm({
 
     if (invalidFile) {
       setImages([]);
+
       setErrors((previous) => ({
         ...previous,
         images:
           "Only JPG, PNG, or WebP images up to 5 MB are allowed.",
       }));
+
+      event.target.value = "";
       return;
     }
 
@@ -121,11 +130,13 @@ function HiddenSpotForm({
   function validate() {
     const newErrors = {};
 
+    // Validate spot name.
     if (formData.name.trim().length < 3) {
       newErrors.name =
         "Spot name must contain at least 3 characters.";
     }
 
+    // Validate category.
     if (!formData.category) {
       newErrors.category = "Please select a category.";
     } else if (
@@ -134,19 +145,27 @@ function HiddenSpotForm({
           String(category.id) === String(formData.category)
       )
     ) {
-      newErrors.category = "Please select a valid category.";
+      newErrors.category =
+        "Please select a valid category.";
     }
 
+    // Validate description.
     if (formData.description.trim().length < 20) {
       newErrors.description =
         "Description must contain at least 20 characters.";
     }
 
-    if (images.length > MAX_IMAGES) {
-      newErrors.images =
-        `You can upload a maximum of ${MAX_IMAGES} images.`;
+    // Validate mandatory landmark.
+    if (!formData.address.trim()) {
+      newErrors.address = "Please enter a landmark.";
     }
 
+    // Require exactly three images.
+    if (images.length !== REQUIRED_IMAGES) {
+      newErrors.images = "Exactly 3 images are required.";
+    }
+
+    // Validate every selected image again before submission.
     if (
       images.some(
         (file) =>
@@ -235,10 +254,7 @@ function HiddenSpotForm({
               flexDirection: "column",
             }}
           >
-            {/* ================================================
-                MODAL HEADER
-            ================================================ */}
-
+            {/* MODAL HEADER */}
             <div className="modal-header border-bottom flex-shrink-0">
               <div>
                 <h5 className="modal-title fw-bold">
@@ -260,10 +276,7 @@ function HiddenSpotForm({
               />
             </div>
 
-            {/* ================================================
-                FORM
-            ================================================ */}
-
+            {/* FORM */}
             <form
               onSubmit={handleSubmit}
               noValidate
@@ -427,31 +440,35 @@ function HiddenSpotForm({
                   </div>
                 </div>
 
-                {/* ADDRESS */}
+                {/* MANDATORY LANDMARK */}
                 <div className="mb-3">
                   <label
                     htmlFor="hiddenSpotAddress"
                     className="form-label fw-semibold"
                   >
-                    Address or Landmark
+                    Landmark <span className="text-danger">*</span>
                   </label>
 
                   <input
                     id="hiddenSpotAddress"
                     type="text"
                     name="address"
-                    className="form-control"
-                    placeholder="Nearby road, landmark, or area"
+                    className={`form-control ${
+                      errors.address ? "is-invalid" : ""
+                    }`}
+                    placeholder="Enter a nearby road, landmark, or area"
                     value={formData.address}
                     onChange={handleChange}
                     maxLength={255}
                     disabled={submitting}
+                    required
                   />
 
-                  <small className="text-secondary">
-                    Optional. This field requires the Django address
-                    migration to be saved.
-                  </small>
+                  {errors.address && (
+                    <div className="invalid-feedback">
+                      {errors.address}
+                    </div>
+                  )}
                 </div>
 
                 {/* IMAGES */}
@@ -460,7 +477,7 @@ function HiddenSpotForm({
                     htmlFor="hiddenSpotImages"
                     className="form-label fw-semibold"
                   >
-                    Photos
+                    Photos <span className="text-danger">*</span>
                   </label>
 
                   <input
@@ -473,10 +490,12 @@ function HiddenSpotForm({
                     multiple
                     onChange={handleImageChange}
                     disabled={submitting}
+                    required
                   />
 
                   <small className="text-secondary d-block mt-1">
-                    Up to 5 images, maximum 5 MB each.
+                    Select exactly 3 images. JPG, PNG, or WebP;
+                    maximum 5 MB each.
                   </small>
 
                   {errors.images && (
@@ -488,7 +507,7 @@ function HiddenSpotForm({
                   {images.length > 0 && (
                     <div className="small text-success mt-2">
                       <i className="bi bi-images me-2" />
-                      {images.length} image(s) selected
+                      {images.length} of {REQUIRED_IMAGES} images selected
                     </div>
                   )}
                 </div>
@@ -501,10 +520,7 @@ function HiddenSpotForm({
                 </div>
               </div>
 
-              {/* ================================================
-                  FIXED FORM FOOTER
-              ================================================ */}
-
+              {/* FIXED FORM FOOTER */}
               <div
                 className="modal-footer border-top bg-white flex-shrink-0 d-flex justify-content-between gap-2"
                 style={{
@@ -528,8 +544,7 @@ function HiddenSpotForm({
                   disabled={
                     submitting ||
                     categoriesLoading ||
-                    categories.length === 0 ||
-                    Boolean(errors.images)
+                    categories.length === 0
                   }
                 >
                   {submitting ? (

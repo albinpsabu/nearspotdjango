@@ -261,30 +261,44 @@ class RejectSpotView(APIView):
         )
 
     
-class ApproveSpotView(APIView):
 
+class ApproveSpotView(APIView):
     permission_classes = [IsAdminOrEmployee]
 
     def post(self, request, pk):
-
         try:
             spot = HiddenSpot.objects.get(pk=pk)
         except HiddenSpot.DoesNotExist:
             return Response(
                 {"error": "Spot not found."},
-                status=404
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         if spot.status != HiddenSpot.Status.PENDING:
             return Response(
+                {"error": "Only pending spots can be approved."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # A spot must have exactly 3 images before approval.
+        image_count = spot.media.filter(
+            media_type=SpotMedia.MediaType.IMAGE
+        ).count()
+
+        if image_count != 3:
+            return Response(
                 {
-                    "error": "Only pending spots can be approved."
+                    "error": (
+                        "This spot cannot be approved until exactly "
+                        "3 images have been uploaded."
+                    ),
+                    "image_count": image_count,
+                    "required_images": 3,
                 },
-                status=400
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         with transaction.atomic():
-
             spot.status = HiddenSpot.Status.APPROVED
             spot.rejection_reason = ""
             spot.save()
@@ -293,17 +307,16 @@ class ApproveSpotView(APIView):
                 spot=spot,
                 employee=request.user,
                 action=Verification.Action.APPROVED,
-                reason=""
+                reason="",
             )
+
             AuditLog.objects.create(
                 user=request.user,
                 action="SPOT_APPROVED",
-                description=f"Spot '{spot.name}' (ID: {spot.id}) was approved.",
+                description=(
+                    f"Spot '{spot.name}' (ID: {spot.id}) was approved."
+                ),
             )
-        print(
-           
-            f"{spot.submitted_by_id} for spot ID {spot.pk}"
-        )            
 
         notify_spot_owner(
             spot,
@@ -311,14 +324,14 @@ class ApproveSpotView(APIView):
             "Your spot submission has been approved.",
         )
 
-
         return Response(
             {
                 "message": "Spot approved successfully.",
                 "spot_id": spot.id,
                 "status": spot.status,
                 "verification_id": verification.id,
-            }
+            },
+            status=status.HTTP_200_OK,
         )
 
 
@@ -662,6 +675,7 @@ class AdminSpotDeleteView(generics.DestroyAPIView):
 
 
 
+
 class AdminSpotStatusView(generics.UpdateAPIView):
     queryset = HiddenSpot.objects.all()
     serializer_class = MySpotSerializer
@@ -685,8 +699,27 @@ class AdminSpotStatusView(generics.UpdateAPIView):
                     "error": "Invalid status.",
                     "allowed_statuses": allowed_statuses,
                 },
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Enforce the 3-image requirement on every admin approval.
+        if new_status == HiddenSpot.Status.APPROVED:
+            image_count = spot.media.filter(
+                media_type=SpotMedia.MediaType.IMAGE
+            ).count()
+
+            if image_count != 3:
+                return Response(
+                    {
+                        "error": (
+                            "This spot cannot be approved until exactly "
+                            "3 images have been uploaded."
+                        ),
+                        "image_count": image_count,
+                        "required_images": 3,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         spot.status = new_status
 
@@ -694,22 +727,23 @@ class AdminSpotStatusView(generics.UpdateAPIView):
             spot.rejection_reason = ""
 
         spot.save()
+
         if new_status == HiddenSpot.Status.APPROVED:
             notify_spot_owner(
                 spot,
                 "spot.approved",
                 "Your spot submission has been approved.",
             )
+
         elif new_status == HiddenSpot.Status.REJECTED:
             notify_spot_owner(
                 spot,
                 "spot.rejected",
                 (
-                    f"Your spot submission was rejected. "
+                    "Your spot submission was rejected. "
                     f"Reason: {spot.rejection_reason or 'No reason provided.'}"
                 ),
             )
-
 
         AuditLog.objects.create(
             user=request.user,
@@ -724,9 +758,9 @@ class AdminSpotStatusView(generics.UpdateAPIView):
             MySpotSerializer(
                 spot,
                 context={"request": request},
-            ).data
+            ).data,
+            status=status.HTTP_200_OK,
         )
-
 
     
 class AuditLogListView(generics.ListAPIView):

@@ -15,13 +15,21 @@ export async function getSpotCategories() {
 // Create the HiddenSpot record.
 // The backend automatically assigns the current user
 // and sets the submission status to PENDING.
+// A landmark is mandatory.
 export async function createHiddenSpot(data) {
+  const address = data.address?.trim();
+
+  if (!address) {
+    throw new Error("Please enter a landmark.");
+  }
+
   const response = await api.post("/spots/", {
     name: data.name,
     description: data.description,
     category: data.category,
     latitude: data.latitude,
     longitude: data.longitude,
+    address: address,
   });
 
   return response.data;
@@ -43,16 +51,34 @@ export async function uploadHiddenSpotImage(spotId, file) {
   return response.data;
 }
 
-// Complete submission workflow.
-// Images are uploaded after the spot has been created.
+// Create the HiddenSpot and upload its three images.
+// The spot is created before its images are uploaded.
 export async function submitHiddenSpot(data) {
+  // Validate the landmark before creating the spot.
+  if (!data.address?.trim()) {
+    throw new Error("Please enter a landmark.");
+  }
+
+  // Validate the image count before creating the spot.
+  if (!Array.isArray(data.images) || data.images.length !== 3) {
+    throw new Error("Exactly 3 images are required.");
+  }
+
+  // Create the spot first.
   const spot = await createHiddenSpot(data);
 
+  const uploadedImages = [];
   const failedImages = [];
 
-  for (const file of data.images || []) {
+  // Upload each image individually.
+  for (const file of data.images) {
     try {
-      await uploadHiddenSpotImage(spot.id, file);
+      const uploadedImage = await uploadHiddenSpotImage(
+        spot.id,
+        file
+      );
+
+      uploadedImages.push(uploadedImage);
     } catch (error) {
       failedImages.push({
         filename: file.name,
@@ -63,6 +89,10 @@ export async function submitHiddenSpot(data) {
 
   return {
     spot,
+    uploadedImages,
     failedImages,
+    isComplete:
+      failedImages.length === 0 &&
+      uploadedImages.length === 3,
   };
 }

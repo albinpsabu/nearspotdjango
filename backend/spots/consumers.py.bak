@@ -1,25 +1,50 @@
+
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 
 class SpotConsumer(AsyncJsonWebsocketConsumer):
+
     async def connect(self):
+        user = self.scope["user"]
+
+        # Only authenticated users can connect.
+        if not user.is_authenticated:
+            await self.close(code=4001)
+            return
+
+        self.group_name = f"spot_user_{user.id}"
+
+        await self.channel_layer.group_add(
+            self.group_name,
+            self.channel_name,
+        )
+
         await self.accept()
+
         await self.send_json({
-            "type":"connection.established",
-            "message":"connected to Nearspot Websocket"
+            "type": "connection.established",
+            "message": "Connected to NearSpot WebSocket",
         })
 
+    async def disconnect(self, close_code):
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(
+                self.group_name,
+                self.channel_name,
+            )
 
-    async def disconnect(self,close_code):
-        print(f"Websocket disconnected: {close_code}")
-
+        print(f"WebSocket disconnected: {close_code}")
 
     async def receive_json(self, content, **kwargs):
+        # Preserve the existing echo behavior.
         await self.send_json({
-            "type":"echo",
-            "message":content
+            "type": "echo",
+            "message": content,
         })
 
-
-
-        
+    async def user_notification(self, event):
+        # Handles the "user.notification" event sent by notify_spot_owner().
+        await self.send_json({
+            "type": event["notification_type"],
+            "data": event["data"],
+        })

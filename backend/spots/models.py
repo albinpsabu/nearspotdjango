@@ -53,6 +53,12 @@ class HiddenSpot(models.Model):
         related_name="spots"
     )
 
+    address = models.CharField(
+        max_length=255,
+        blank=False,
+        null=False,
+    )
+
     location = gis_models.PointField(
         geography=True,
         srid=4326
