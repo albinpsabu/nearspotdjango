@@ -11,16 +11,16 @@ function StatCard({
   title,
   value,
   description,
-  accent = "#1d2b2e",
+  accent = "#292929",
 }) {
   return (
     <div className="col-12 col-sm-6 col-xl-3">
-      <div className="card border-0 shadow-sm rounded-4 h-100">
+      <div className="card shadow-sm rounded-4 h-100" style={{ border: "1px solid #E5E5E5", borderTop: "3px solid #FFC21A", overflow: "hidden" }}>
         <div className="card-body p-4">
           <div
             className="mb-3"
             style={{
-              color: "#7c8b8e",
+              color: "#666666",
               fontSize: "12px",
               fontWeight: 600,
             }}
@@ -41,7 +41,7 @@ function StatCard({
           <div
             className="mt-2"
             style={{
-              color: "#9aa6a8",
+              color: "#888888",
               fontSize: "11px",
             }}
           >
@@ -59,12 +59,12 @@ function StatCard({
 
 function SectionCard({ title, children }) {
   return (
-    <div className="card border-0 shadow-sm rounded-4 h-100">
+    <div className="card shadow-sm rounded-4 h-100" style={{ border: "1px solid #E5E5E5", borderTop: "3px solid #FFC21A", overflow: "hidden" }}>
       <div className="card-body p-4">
         <h5
           className="fw-semibold mb-3"
           style={{
-            color: "#1d2b2e",
+            color: "#292929",
             fontSize: "16px",
           }}
         >
@@ -84,13 +84,13 @@ function SectionCard({ title, children }) {
 function StatisticRow({
   label,
   value,
-  color = "#1d2b2e",
+  color = "#292929",
 }) {
   return (
     <div className="d-flex justify-content-between align-items-center py-2 border-bottom">
       <span
         style={{
-          color: "#667779",
+          color: "#666666",
           fontSize: "13px",
         }}
       >
@@ -304,7 +304,7 @@ export default function AdminDashboard() {
           <h1
             className="fw-bold mb-1"
             style={{
-              color: "#1d2b2e",
+              color: "#292929",
               fontSize: "24px",
             }}
           >
@@ -314,7 +314,7 @@ export default function AdminDashboard() {
           <p
             className="mb-0"
             style={{
-              color: "#7c8b8e",
+              color: "#666666",
               fontSize: "13px",
             }}
           >
@@ -324,7 +324,8 @@ export default function AdminDashboard() {
 
         <button
           type="button"
-          className="btn btn-outline-secondary btn-sm rounded-3 px-3"
+          className="btn btn-sm rounded-3 px-3"
+          style={{ border: "1px solid #E5E5E5", color: "#292929", backgroundColor: "#FFFFFF" }}
           onClick={() => {
             fetchDashboardStats();
             fetchAuditLogs();
@@ -481,7 +482,7 @@ export default function AdminDashboard() {
             <p
               className="mb-3"
               style={{
-                color: "#7c8b8e",
+                color: "#666666",
                 fontSize: "13px",
               }}
             >
@@ -492,7 +493,8 @@ export default function AdminDashboard() {
             <div
               className="d-flex justify-content-between align-items-center gap-3 p-3 rounded-3 mb-3"
               style={{
-                backgroundColor: "#fff8e8",
+                backgroundColor: "#FFF5D6",
+                border: "1px solid #F3D98A",
               }}
             >
               <div>
@@ -508,7 +510,7 @@ export default function AdminDashboard() {
 
                 <div
                   style={{
-                    color: "#8a989a",
+                    color: "#777777",
                     fontSize: "11px",
                   }}
                 >
@@ -547,7 +549,7 @@ export default function AdminDashboard() {
 
                 <div
                   style={{
-                    color: "#8a989a",
+                    color: "#777777",
                     fontSize: "11px",
                   }}
                 >
@@ -572,7 +574,7 @@ export default function AdminDashboard() {
       {/* Recent Activity */}
       <div className="row g-3 mt-1">
         <div className="col-12">
-          <div className="card border-0 shadow-sm rounded-4">
+          <div className="card shadow-sm rounded-4" style={{ border: "1px solid #E5E5E5", borderTop: "3px solid #FFC21A", overflow: "hidden" }}>
             <div className="card-body p-4">
               {/* Activity Header */}
               <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
@@ -580,7 +582,7 @@ export default function AdminDashboard() {
                   <h5
                     className="fw-semibold mb-1"
                     style={{
-                      color: "#1d2b2e",
+                      color: "#292929",
                       fontSize: "16px",
                     }}
                   >
@@ -590,7 +592,7 @@ export default function AdminDashboard() {
                   <p
                     className="mb-0"
                     style={{
-                      color: "#8a989a",
+                      color: "#777777",
                       fontSize: "12px",
                     }}
                   >
@@ -600,7 +602,8 @@ export default function AdminDashboard() {
 
                 <button
                   type="button"
-                  className="btn btn-outline-secondary btn-sm rounded-3"
+                  className="btn btn-sm rounded-3"
+                  style={{ border: "1px solid #E5E5E5", color: "#292929", backgroundColor: "#FFFFFF" }}
                   onClick={() => fetchAuditLogs()}
                   disabled={auditLogsLoading}
                 >
@@ -636,7 +639,7 @@ export default function AdminDashboard() {
                 <div
                   className="text-center py-4"
                   style={{
-                    color: "#8a989a",
+                    color: "#777777",
                     fontSize: "13px",
                   }}
                 >
@@ -651,7 +654,7 @@ export default function AdminDashboard() {
                   <div
                     className="text-center py-4"
                     style={{
-                      color: "#8a989a",
+                      color: "#777777",
                       fontSize: "13px",
                     }}
                   >
@@ -695,7 +698,7 @@ export default function AdminDashboard() {
                       <div
                         className="fw-semibold mb-1"
                         style={{
-                          color: "#1d2b2e",
+                          color: "#292929",
                           fontSize: "13px",
                           overflowWrap: "anywhere",
                         }}
@@ -706,7 +709,7 @@ export default function AdminDashboard() {
                       <div
                         className="mb-1"
                         style={{
-                          color: "#667779",
+                          color: "#666666",
                           fontSize: "12px",
                           overflowWrap: "anywhere",
                         }}
@@ -716,7 +719,7 @@ export default function AdminDashboard() {
 
                       <div
                         style={{
-                          color: "#9aa6a8",
+                          color: "#888888",
                           fontSize: "11px",
                         }}
                       >

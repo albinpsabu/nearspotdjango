@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 // ============================================================
 // ADMIN SIDEBAR
+// NearSpot Premium White + Yellow Theme
 // ============================================================
 
 function AdminSidebar({
@@ -15,16 +16,50 @@ function AdminSidebar({
   const location = useLocation();
 
   // ============================================================
+  // THEME
+  // ============================================================
+
+  const theme = {
+    background: "#FFFFFF",
+    backgroundHover: "#FFF5D6",
+    backgroundActive: "#FFC21A",
+    primary: "#292929",
+    accent: "#FFC21A",
+    text: "#292929",
+    secondary: "#666666",
+    muted: "#FFF5D6",
+    border: "#E5E5E5",
+    activeText: "#292929",
+  };
+
+  // ============================================================
   // NAVIGATION ITEMS
   // ============================================================
 
   const navigationItems = [
-    { label: "Dashboard", path: "/admin", icon: "▦" },
-    { label: "Spots", path: "/admin/spots", icon: "⌖" },
-    { label: "Users", path: "/admin/users", icon: "♙" },
-    { label: "Employees", path: "/admin/employees", icon: "♟" },
-    { label: "Categories", path: "/admin/categories", icon: "▤" },
-    { label: "Reports", path: "/admin/reports", icon: "⚑" },
+    { label: "Dashboard", path: "/admin", icon: "bi-grid-1x2" },
+    { label: "Spots", path: "/admin/spots", icon: "bi-geo-alt" },
+    { label: "Users", path: "/admin/users", icon: "bi-people" },
+    {
+      label: "Employees",
+      path: "/admin/employees",
+      icon: "bi-person-badge",
+    },
+    {
+      label: "Employee Permissions",
+      path: "/admin/employee-permissions",
+      icon: "bi-shield-check",
+    },
+    {
+      label: "Categories",
+      path: "/admin/categories",
+      icon: "bi-grid",
+    },
+    {
+      label: "Reports",
+      path: "/admin/reports",
+      icon: "bi-graph-up-arrow",
+    },
   ];
 
   // ============================================================
@@ -54,73 +89,114 @@ function AdminSidebar({
     }
   };
 
+  const isCompact = collapsed && !mobile;
+
   // ============================================================
   // SIDEBAR CONTENT
   // ============================================================
 
   return (
     <aside
-      className="d-flex flex-column h-100 bg-white"
+      className="d-flex flex-column"
       style={{
         width: "100%",
+        height: "100%",
         minHeight: "100vh",
-        borderRight: "1px solid #e8eeee",
+        boxSizing: "border-box",
+        backgroundColor: theme.background,
+        color: theme.text,
+        borderRight: `1px solid ${theme.border}`,
         overflowX: "hidden",
         overflowY: "auto",
+        fontFamily:
+          'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
       {/* ======================================================
-          BRAND
+          BRAND HEADER
+          Fixed 82px height to align with AdminTopbar
       ======================================================= */}
 
       <div
-        className={`d-flex align-items-center ${
-          collapsed && !mobile
+        className={`d-flex align-items-center flex-shrink-0 ${
+          isCompact
             ? "justify-content-center px-2"
-            : "justify-content-between px-3 px-xl-4"
-        } border-bottom flex-shrink-0`}
+            : "justify-content-between px-3"
+        }`}
         style={{
-          height: "72px",
-          minHeight: "72px",
+          height: "82px",
+          minHeight: "82px",
+          boxSizing: "border-box",
+          borderBottom: `1px solid ${theme.border}`,
+          backgroundColor: theme.background,
         }}
       >
         <div
           className={`d-flex align-items-center ${
-            collapsed && !mobile ? "" : "gap-2"
+            isCompact ? "" : "gap-2"
           }`}
+          style={{
+            minWidth: 0,
+          }}
         >
+          {/* NEARSPOT LOGO */}
+
           <div
-            className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+            className="d-flex align-items-center justify-content-center flex-shrink-0"
             style={{
-              width: "38px",
-              height: "38px",
-              backgroundColor: "#20cfa7",
-              fontSize: "18px",
-              boxShadow: "0 4px 12px rgba(32, 207, 167, 0.2)",
+              width: "46px",
+              height: "46px",
+              boxSizing: "border-box",
+              borderRadius: "13px",
+              backgroundColor: "#FFF5D6",
+              border: "1px solid rgba(255, 194, 26, 0.45)",
+              padding: "4px",
             }}
           >
-            N
+            <img
+              src="/logo.png"
+              alt="NearSpot"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
           </div>
 
+          {/* BRAND NAME */}
+
           {(!collapsed || mobile) && (
-            <div>
+            <div
+              className="d-flex flex-column justify-content-center"
+              style={{
+                minWidth: 0,
+                gap: "3px",
+              }}
+            >
               <div
                 className="fw-bold"
                 style={{
-                  color: "#162326",
-                  fontSize: "18px",
-                  letterSpacing: "-0.5px",
-                  lineHeight: 1.2,
+                  color: theme.primary,
+                  fontSize: "19px",
+                  letterSpacing: "-0.6px",
+                  lineHeight: "23px",
+                  whiteSpace: "nowrap",
                 }}
               >
-                Near<span style={{ color: "#12b995" }}>Spot</span>
+                NearSpot
               </div>
 
               <div
-                className="mt-1"
                 style={{
-                  color: "#899597",
+                  color: theme.secondary,
                   fontSize: "10px",
+                  fontWeight: 600,
+                  letterSpacing: "1.2px",
+                  lineHeight: "14px",
+                  textTransform: "uppercase",
+                  whiteSpace: "nowrap",
                 }}
               >
                 Administration
@@ -134,18 +210,27 @@ function AdminSidebar({
         {mobile && (
           <button
             type="button"
-            className="btn btn-light border-0 rounded-3"
+            className="btn border-0 d-flex align-items-center justify-content-center flex-shrink-0"
             onClick={onClose}
             aria-label="Close sidebar"
             style={{
-              width: "34px",
-              height: "34px",
-              color: "#536366",
-              fontSize: "19px",
-              lineHeight: 1,
+              width: "36px",
+              height: "36px",
+              borderRadius: "10px",
+              color: theme.text,
+              backgroundColor: theme.muted,
+              fontSize: "18px",
+              padding: 0,
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.backgroundColor =
+                theme.backgroundHover;
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.backgroundColor = theme.muted;
             }}
           >
-            ×
+            <i className="bi bi-x-lg" />
           </button>
         )}
       </div>
@@ -154,17 +239,20 @@ function AdminSidebar({
           NAVIGATION
       ======================================================= */}
 
-      <nav className={`flex-grow-1 ${collapsed && !mobile ? "p-2" : "p-3"}`}>
+      <nav
+        className={`flex-grow-1 ${isCompact ? "p-2" : "p-3"}`}
+        aria-label="Admin navigation"
+      >
         {(!collapsed || mobile) && (
           <div
-            className="text-uppercase fw-semibold px-3 mb-3 mt-1"
+            className="text-uppercase fw-bold px-3 mb-3 mt-2"
             style={{
-              color: "#a0aaaa",
+              color: "#777777",
               fontSize: "10px",
-              letterSpacing: "0.1em",
+              letterSpacing: "1.3px",
             }}
           >
-            Management
+            Workspace
           </div>
         )}
 
@@ -176,50 +264,64 @@ function AdminSidebar({
               <button
                 key={item.path}
                 type="button"
-                title={collapsed && !mobile ? item.label : undefined}
+                title={isCompact ? item.label : undefined}
                 aria-label={item.label}
                 aria-current={active ? "page" : undefined}
                 onClick={() => handleNavigation(item.path)}
-                className="btn border-0 w-100 d-flex align-items-center rounded-3"
+                className="btn border-0 w-100 d-flex align-items-center"
                 style={{
-                  minHeight: "44px",
-                  justifyContent:
-                    collapsed && !mobile ? "center" : "flex-start",
-                  gap: collapsed && !mobile ? 0 : "13px",
-                  padding:
-                    collapsed && !mobile ? "10px 0" : "10px 13px",
-                  color: active ? "#087f68" : "#637174",
-                  backgroundColor: active ? "#e8f8f3" : "transparent",
+                  minHeight: "46px",
+                  boxSizing: "border-box",
+                  justifyContent: isCompact
+                    ? "center"
+                    : "flex-start",
+                  gap: isCompact ? 0 : "12px",
+                  padding: isCompact ? "10px 0" : "10px 12px",
+                  borderRadius: "11px",
+                  color: active ? theme.activeText : theme.secondary,
+                  backgroundColor: active
+                    ? theme.backgroundActive
+                    : "transparent",
                   fontSize: "13px",
-                  fontWeight: active ? 650 : 500,
+                  fontWeight: active ? 700 : 500,
                   boxShadow: active
-                    ? "inset 3px 0 0 #20cfa7"
+                    ? "0 4px 12px rgba(255, 194, 26, 0.22)"
                     : "none",
                   transition:
-                    "background-color 0.15s ease, color 0.15s ease",
+                    "background-color 0.18s ease, color 0.18s ease",
+                  textAlign: "left",
+                  outlineOffset: "2px",
                 }}
                 onMouseEnter={(event) => {
                   if (!active) {
-                    event.currentTarget.style.backgroundColor = "#f5f8f7";
+                    event.currentTarget.style.backgroundColor =
+                      theme.backgroundHover;
+                    event.currentTarget.style.color = theme.text;
                   }
                 }}
                 onMouseLeave={(event) => {
                   if (!active) {
-                    event.currentTarget.style.backgroundColor = "transparent";
+                    event.currentTarget.style.backgroundColor =
+                      "transparent";
+                    event.currentTarget.style.color = theme.secondary;
                   }
                 }}
               >
+                {/* NAVIGATION ICON */}
+
                 <span
                   className="d-flex align-items-center justify-content-center flex-shrink-0"
                   style={{
-                    width: "23px",
-                    height: "23px",
-                    fontSize: "19px",
-                    color: active ? "#0b9b7d" : "#82908f",
+                    width: "24px",
+                    height: "24px",
+                    fontSize: "20px",
+                    color: active ? theme.activeText : theme.primary,
                   }}
                 >
-                  {item.icon}
+                  <i className={`bi ${item.icon}`} />
                 </span>
+
+                {/* NAVIGATION LABEL */}
 
                 {(!collapsed || mobile) && (
                   <>
@@ -231,9 +333,9 @@ function AdminSidebar({
                       <span
                         className="rounded-circle flex-shrink-0"
                         style={{
-                          width: "6px",
-                          height: "6px",
-                          backgroundColor: "#20cfa7",
+                          width: "7px",
+                          height: "7px",
+                          backgroundColor: theme.activeText,
                         }}
                       />
                     )}
@@ -250,39 +352,56 @@ function AdminSidebar({
       ======================================================= */}
 
       <div
-        className={`border-top flex-shrink-0 ${
-          collapsed && !mobile ? "p-2" : "p-3"
+        className={`flex-shrink-0 ${
+          isCompact ? "p-2" : "p-3"
         }`}
+        style={{
+          borderTop: `1px solid ${theme.border}`,
+          backgroundColor: theme.background,
+        }}
       >
+        {/* BACK TO NEARSPOT */}
+
         <button
           type="button"
-          title={
-            collapsed && !mobile ? "Back to NearSpot" : undefined
-          }
+          title={isCompact ? "Back to NearSpot" : undefined}
           aria-label="Back to NearSpot"
-          className="btn border-0 w-100 d-flex align-items-center rounded-3"
+          className="btn border-0 w-100 d-flex align-items-center"
           onClick={() => handleNavigation("/")}
           style={{
-            justifyContent:
-              collapsed && !mobile ? "center" : "flex-start",
-            gap: collapsed && !mobile ? 0 : "13px",
-            padding:
-              collapsed && !mobile ? "10px 0" : "10px 13px",
-            color: "#687779",
+            boxSizing: "border-box",
+            justifyContent: isCompact ? "center" : "flex-start",
+            gap: isCompact ? 0 : "12px",
+            padding: isCompact ? "10px 0" : "10px 12px",
+            borderRadius: "11px",
+            color: theme.secondary,
             backgroundColor: "transparent",
             fontSize: "12px",
-            fontWeight: 500,
+            fontWeight: 600,
             minHeight: "44px",
+            transition:
+              "background-color 0.18s ease, color 0.18s ease",
+          }}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.backgroundColor =
+              theme.backgroundHover;
+            event.currentTarget.style.color = theme.text;
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.backgroundColor = "transparent";
+            event.currentTarget.style.color = theme.secondary;
           }}
         >
           <span
             className="d-flex align-items-center justify-content-center flex-shrink-0"
             style={{
-              width: "23px",
-              fontSize: "19px",
+              width: "24px",
+              height: "24px",
+              fontSize: "20px",
+              color: theme.primary,
             }}
           >
-            ←
+            <i className="bi bi-arrow-left" />
           </span>
 
           {(!collapsed || mobile) && (
@@ -290,24 +409,33 @@ function AdminSidebar({
           )}
         </button>
 
+        {/* SIDEBAR FOOTER */}
+
         {(!collapsed || mobile) && (
           <div
-            className="mt-3 px-2"
+            className="mt-3 pt-3 px-2"
             style={{
-              color: "#a1acab",
+              borderTop: `1px solid ${theme.border}`,
+              color: "#777777",
               fontSize: "10px",
+              lineHeight: 1.6,
             }}
           >
-            NearSpot Admin Panel
+            <div
+              className="fw-semibold"
+              style={{
+                color: theme.primary,
+              }}
+            >
+              NearSpot Admin Panel
+            </div>
+
+            <div>Manage your workspace</div>
           </div>
         )}
       </div>
     </aside>
   );
 }
-
-// ============================================================
-// EXPORT
-// ============================================================
 
 export default AdminSidebar;

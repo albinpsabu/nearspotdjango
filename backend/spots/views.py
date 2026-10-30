@@ -6,7 +6,12 @@ from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
-from accounts.permissions import IsAdmin, IsUser,IsAdminOrEmployee
+from accounts.permissions import (
+    IsAdmin,
+    IsUser,
+    IsAdminOrEmployee,
+    HasFeaturePermission,
+)
 from rest_framework.permissions import AllowAny,IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.db import transaction
@@ -148,7 +153,8 @@ class HiddenSpotCreateView(generics.CreateAPIView):
 class PendingSpotListView(generics.ListAPIView):
 
     serializer_class = PendingSpotSerializer
-    permission_classes = [IsAdminOrEmployee]
+    required_permission = "spots.view_pending"
+    permission_classes = [IsAuthenticated, HasFeaturePermission]
 
     def get_queryset(self):
         return (
@@ -170,7 +176,8 @@ class PendingSpotListView(generics.ListAPIView):
 class EmployeeSpotDetailView(generics.RetrieveAPIView):
 
     serializer_class = PendingSpotSerializer
-    permission_classes = [IsAdminOrEmployee]
+    required_permission = "spots.view_submission"
+    permission_classes = [IsAuthenticated, HasFeaturePermission]
     lookup_field = "pk"
 
     def get_queryset(self):
@@ -198,7 +205,8 @@ class ApprovedSpotDetailView(generics.RetrieveAPIView):
 
 class RejectSpotView(APIView):
 
-    permission_classes = [IsAdminOrEmployee]
+    required_permission = "spots.reject"
+    permission_classes = [IsAuthenticated, HasFeaturePermission]
 
     def post(self, request, pk):
 
@@ -263,7 +271,8 @@ class RejectSpotView(APIView):
     
 
 class ApproveSpotView(APIView):
-    permission_classes = [IsAdminOrEmployee]
+    required_permission = "spots.approve"
+    permission_classes = [IsAuthenticated, HasFeaturePermission]
 
     def post(self, request, pk):
         try:
@@ -497,7 +506,8 @@ class ReportSpotView(generics.CreateAPIView):
 
 class ReportListView(generics.ListAPIView):
     serializer_class = ReportSerializer
-    permission_classes = [IsAdminOrEmployee]
+    required_permission = "reports.view"
+    permission_classes = [IsAuthenticated, HasFeaturePermission]
 
     def get_queryset(self):
         return (
@@ -511,7 +521,8 @@ class ReportListView(generics.ListAPIView):
 class ReportStatusUpdateView(generics.UpdateAPIView):
     queryset = Report.objects.all()
     serializer_class = ReportStatusSerializer
-    permission_classes = [IsAdminOrEmployee]
+    required_permission = "reports.update_status"
+    permission_classes = [IsAuthenticated, HasFeaturePermission]
 
     http_method_names = ["patch"]
 
@@ -781,7 +792,8 @@ class AuditLogListView(generics.ListAPIView):
 
 class EmployeeDashboardStatsView(APIView):
 
-    permission_classes = [IsAdminOrEmployee]
+    required_permission = "dashboard.employee_view"
+    permission_classes = [IsAuthenticated, HasFeaturePermission]
 
     def get(self, request):
 
@@ -1032,9 +1044,3 @@ class NotificationMarkAllReadView(APIView):
             "message": "All notifications marked as read.",
             "updated_count": updated_count,
         })
-
-
-
-
-
-

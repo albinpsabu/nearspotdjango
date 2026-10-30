@@ -1,4 +1,3 @@
-
 """
 NearSpot — OpenStreetMap discovery and verification.
 
@@ -15,6 +14,7 @@ This module does not write to the NearSpot database.
 import json
 import logging
 import math
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -62,7 +62,14 @@ DISCOVERY_PADDING_RATIO = 0.20
 # Failure recovery.
 OVERPASS_ENDPOINT_COOLDOWN = 120
 OVERPASS_ALL_FAILED_COOLDOWN = 45
-DISCOVERY_LOCK_TIMEOUT = 35
+
+# A discovery request can try multiple endpoints.
+# Keep its lock longer than the maximum expected request time.
+DISCOVERY_LOCK_TIMEOUT = 75
+
+# Retry configuration.
+OVERPASS_MAX_ATTEMPTS_PER_ENDPOINT = 2
+OVERPASS_RETRY_DELAY_SECONDS = 1
 
 VALID_OSM_TYPES = ("node", "way", "relation")
 MAX_OSM_ID = 9223372036854775807
@@ -156,7 +163,6 @@ def validate_bbox(south, west, north, east):
             "Invalid bounding box coordinate order."
         )
 
-    # Approximate rectangle area in square kilometers.
     middle_latitude = (south + north) / 2
     height_km = (north - south) * 111.32
 
@@ -181,11 +187,7 @@ def validate_bbox(south, west, north, east):
 # ============================================================
 
 def validate_osm_identifier(osm_type, osm_id):
-    """
-    An OSM element is a node, way, or relation.
-
-    Every element has a numeric identifier.
-    """
+    """Validate an OpenStreetMap node, way, or relation ID."""
 
     if osm_type not in VALID_OSM_TYPES:
         raise OSMValidationError(
@@ -233,10 +235,7 @@ def build_overpass_query(south, west, north, east):
     """
     Generate an Overpass QL query.
 
-    nwr = nodes + ways + relations.
-
-    Only named places in selected categories are
-    requested, avoiding generic roads and buildings.
+    Only named places in selected categories are requested.
     """
 
     bbox = f"{south},{west},{north},{east}"
@@ -268,9 +267,7 @@ def build_overpass_query(south, west, north, east):
 # ============================================================
 
 def build_single_place_query(osm_type, osm_id):
-    """
-    Retained for compatibility with existing callers.
-    """
+    """Retained for compatibility with existing callers."""
 
     osm_type, osm_id = validate_osm_identifier(
         osm_type,
@@ -289,10 +286,7 @@ def build_single_place_query(osm_type, osm_id):
 # ============================================================
 
 def extract_category(tags):
-    """
-    Example:
-    {"amenity": "hospital"} -> "amenity:hospital"
-    """
+    """Extract the first recognized OSM category."""
 
     for key in OSM_CATEGORIES:
         value = tags.get(key)
@@ -308,9 +302,7 @@ def extract_category(tags):
 # ============================================================
 
 def extract_address(tags):
-    """
-    Construct a readable address from OSM address tags.
-    """
+    """Construct a readable address from OSM address tags."""
 
     house_number = tags.get("addr:housenumber", "")
     street = tags.get("addr:street", "")
@@ -347,11 +339,7 @@ def extract_address(tags):
 # ============================================================
 
 def normalize_coordinates(latitude, longitude):
-    """
-    Convert coordinates to valid finite floats.
-
-    Invalid coordinates return None.
-    """
+    """Convert coordinates to valid finite floats."""
 
     try:
         latitude = float(latitude)
@@ -375,13 +363,7 @@ def normalize_coordinates(latitude, longitude):
 # ============================================================
 
 def normalize_osm_element(element):
-    """
-    Convert raw OSM data into NearSpot's standard
-    external-place response structure.
-
-    Nodes have direct coordinates.
-    Ways and relations use their calculated center.
-    """
+    """Convert raw OSM data into NearSpot's standard structure."""
 
     if not isinstance(element, dict):
         return None
@@ -413,7 +395,6 @@ def normalize_osm_element(element):
     if osm_type == "node":
         latitude = element.get("lat")
         longitude = element.get("lon")
-
     else:
         center = element.get("center") or {}
 
@@ -454,15 +435,7 @@ def request_json(
     purpose="OSM request",
     timeout=None,
 ):
-    """
-    Make an HTTP request and decode JSON.
-
-    Security and reliability:
-    - User-Agent header
-    - Request timeout
-    - Maximum response size
-    - Error handling
-    """
+    """Make an HTTP request and safely decode JSON."""
 
     headers = {
         "User-Agent": USER_AGENT,
@@ -500,19 +473,28 @@ def request_json(
         return json.loads(body.decode("utf-8"))
 
     except urllib.error.HTTPError as exc:
-        # Preserve 404 so the verification function
-        # can distinguish a missing place from an outage.
         if exc.code == 404:
             raise
 
+        # Include the upstream status and a short response body
+        # when available, without exposing an unlimited response.
+        try:
+            error_body = exc.read(1000).decode(
+                "utf-8",
+                errors="replace",
+            ).strip()
+        except (OSError, ValueError):
+            error_body = ""
+
         logger.warning(
-            "%s returned HTTP %s",
+            "%s returned HTTP %s; response=%s",
             purpose,
             exc.code,
+            error_body[:500] or "(empty response)",
         )
 
         raise OSMServiceError(
-            "OpenStreetMap place data is temporarily unavailable."
+            f"OpenStreetMap service returned HTTP {exc.code}."
         ) from exc
 
     except (
@@ -521,8 +503,9 @@ def request_json(
         OSError,
     ) as exc:
         logger.warning(
-            "%s connection failed: %s",
+            "%s connection failed: %s: %s",
             purpose,
+            type(exc).__name__,
             exc,
         )
 
@@ -548,10 +531,10 @@ def request_json(
 
 def request_overpass(query, purpose="discovery"):
     """
-    Try Overpass endpoints in sequence.
+    Try available Overpass endpoints in sequence.
 
-    If a server fails, temporarily mark it unavailable
-    so subsequent requests do not repeatedly hit it.
+    Each endpoint receives a limited retry for transient
+    failures. Failed endpoints are temporarily cooled down.
     """
 
     request_body = urllib.parse.urlencode(
@@ -559,61 +542,102 @@ def request_overpass(query, purpose="discovery"):
     ).encode("utf-8")
 
     last_error = None
+    attempted_endpoint = False
 
-    # Remove duplicate URLs while preserving order.
     for endpoint in dict.fromkeys(OVERPASS_URLS):
-
         cooldown_key = (
             f"nearspot:overpass:down:{endpoint}"
         )
 
-        # Skip servers that recently failed.
         if cache.get(cooldown_key):
+            logger.debug(
+                "Skipping Overpass endpoint in cooldown: %s",
+                endpoint,
+            )
             continue
 
-        try:
-            payload = request_json(
-                endpoint,
-                data=request_body,
-                purpose=f"Overpass {purpose} ({endpoint})",
-                timeout=OVERPASS_REQUEST_TIMEOUT,
-            )
+        attempted_endpoint = True
 
-            if (
-                not isinstance(payload, dict)
-                or not isinstance(
-                    payload.get("elements"), list
-                )
-            ):
-                raise OSMServiceError(
-                    "Unexpected Overpass response."
+        for attempt in range(1, OVERPASS_MAX_ATTEMPTS_PER_ENDPOINT + 1):
+            try:
+                payload = request_json(
+                    endpoint,
+                    data=request_body,
+                    purpose=(
+                        f"Overpass {purpose} ({endpoint}) "
+                        f"attempt {attempt}"
+                    ),
+                    timeout=OVERPASS_REQUEST_TIMEOUT,
                 )
 
-            # A remark may indicate a timeout or
-            # incomplete Overpass query execution.
-            if payload.get("remark"):
-                raise OSMServiceError(
-                    "Overpass reported an incomplete response."
+                if (
+                    not isinstance(payload, dict)
+                    or not isinstance(payload.get("elements"), list)
+                ):
+                    raise OSMServiceError(
+                        "Unexpected Overpass response."
+                    )
+
+                if payload.get("remark"):
+                    raise OSMServiceError(
+                        "Overpass reported an incomplete response."
+                    )
+
+                logger.info(
+                    "Overpass discovery succeeded: endpoint=%s "
+                    "attempt=%s results=%s",
+                    endpoint,
+                    attempt,
+                    len(payload["elements"]),
                 )
 
-            return payload["elements"]
+                return payload["elements"]
 
-        except (
-            OSMServiceError,
-            urllib.error.HTTPError,
-        ) as exc:
-            last_error = exc
+            except (
+                OSMServiceError,
+                urllib.error.HTTPError,
+            ) as exc:
+                last_error = exc
 
-            cache.set(
-                cooldown_key,
-                True,
-                OVERPASS_ENDPOINT_COOLDOWN,
-            )
+                status = getattr(exc, "code", None)
 
-            logger.warning(
-                "Overpass endpoint unavailable: %s",
-                endpoint,
-            )
+                logger.warning(
+                    "Overpass endpoint failed: endpoint=%s "
+                    "attempt=%s/%s error_type=%s status=%s detail=%s",
+                    endpoint,
+                    attempt,
+                    OVERPASS_MAX_ATTEMPTS_PER_ENDPOINT,
+                    type(exc).__name__,
+                    status,
+                    str(exc),
+                )
+
+                # A 404 usually means an invalid endpoint or resource.
+                # Retrying it is unlikely to help.
+                if status == 404:
+                    break
+
+                if attempt < OVERPASS_MAX_ATTEMPTS_PER_ENDPOINT:
+                    time.sleep(OVERPASS_RETRY_DELAY_SECONDS)
+
+        # Cool down this endpoint only after its attempts fail.
+        cache.set(
+            cooldown_key,
+            True,
+            OVERPASS_ENDPOINT_COOLDOWN,
+        )
+
+        logger.warning(
+            "Overpass endpoint placed in cooldown: %s "
+            "(%s seconds)",
+            endpoint,
+            OVERPASS_ENDPOINT_COOLDOWN,
+        )
+
+    if not attempted_endpoint:
+        logger.warning(
+            "All Overpass endpoints are currently in cooldown."
+        )
 
     raise OSMServiceError(
         "Place discovery is temporarily unavailable."
@@ -634,12 +658,7 @@ def _inside_bbox(place, south, west, north, east):
 
 
 def _discovery_key(south, west, north, east):
-    """
-    Group geographic locations into cache tiles.
-
-    The key uses the viewport center rather than
-    the exact viewport coordinates.
-    """
+    """Create a geographic discovery cache key."""
 
     middle_latitude = (south + north) / 2
     middle_longitude = (west + east) / 2
@@ -659,12 +678,7 @@ def _discovery_key(south, west, north, east):
 
 
 def _nearby_cache_keys(south, west, north, east):
-    """
-    Search the current cache tile and its 8 neighbors.
-
-    This allows cached results to be reused when
-    panning crosses a nearby tile boundary.
-    """
+    """Return cache keys for the current tile and its neighbors."""
 
     mid_lat = (south + north) / 2
     mid_lon = (west + east) / 2
@@ -688,10 +702,7 @@ def _nearby_cache_keys(south, west, north, east):
 
 
 def _covers(entry, bounds):
-    """
-    Only reuse a cache entry if its area fully
-    covers the requested viewport.
-    """
+    """Check whether a cached area covers the requested viewport."""
 
     if (
         not isinstance(entry, dict)
@@ -713,10 +724,10 @@ def _covers(entry, bounds):
 
 def _lookup_cached(keys, bounds, stale=False):
     """
-    Look for a covering cached area.
+    Find a covering cache entry.
 
-    None means no cache was found.
-    [] means the cached area contains no places.
+    None means no suitable cache entry was found.
+    An empty list means a valid cached result contains no places.
     """
 
     suffix = ":stale" if stale else ""
@@ -739,12 +750,7 @@ def _lookup_cached(keys, bounds, stale=False):
 
 
 def _store_cached(key, bounds, places, stale=False):
-    """
-    Store several geographic areas per tile.
-
-    This avoids replacing the previous cache entry
-    every time the viewport changes.
-    """
+    """Store geographic discovery results in the Django cache."""
 
     suffix = ":stale" if stale else ""
     full_key = key + suffix
@@ -783,15 +789,7 @@ def _store_cached(key, bounds, places, stale=False):
 
 
 def _expanded_bounds(bounds):
-    """
-    Expand the requested viewport by 20%.
-
-    The extra surrounding area can be reused when
-    the user pans slightly.
-
-    If expansion exceeds 16 km², use the original
-    viewport instead.
-    """
+    """Expand the requested viewport when the area limit permits."""
 
     south, west, north, east = bounds
 
@@ -824,38 +822,29 @@ def _expanded_bounds(bounds):
 
 def fetch_external_places(south, west, north, east):
     """
-    Main external-place discovery function.
+    Discover external places for the requested viewport.
 
-    Workflow:
-    1. Validate viewport.
-    2. Check fresh cache.
-    3. Check service cooldown.
-    4. Acquire a request lock.
-    5. Fetch from Overpass.
-    6. Normalize and deduplicate.
-    7. Cache results.
-    8. Return visible places.
-
-    During an outage, try stale cached results.
+    Uses fresh cache first, then Overpass, and stale cache
+    when external discovery is temporarily unavailable.
     """
 
-    # STEP 1: Validate coordinates.
     bounds = validate_bbox(
-        south, west, north, east
+        south,
+        west,
+        north,
+        east,
     )
 
-    # Check the current tile and neighboring tiles.
     keys = _nearby_cache_keys(*bounds)
 
-    # STEP 2: Reuse fresh cache if available.
+    # Step 1: Fresh cache.
     fresh = _lookup_cached(keys, bounds)
 
     if fresh is not None:
         logger.debug("OSM discovery fresh cache hit")
         return fresh
 
-    # STEP 3: Avoid retrying immediately after
-    # all Overpass endpoints fail.
+    # Step 2: Global failure cooldown.
     cooldown_key = (
         "nearspot:osm:discovery:all-failed"
     )
@@ -868,13 +857,16 @@ def fetch_external_places(south, west, north, east):
         )
 
         if stale is not None:
+            logger.warning(
+                "Serving stale cached OSM results during cooldown"
+            )
             return stale
 
         raise OSMServiceError(
             "Place discovery is temporarily unavailable."
         )
 
-    # STEP 4: Best-effort duplicate request prevention.
+    # Step 3: Prevent duplicate requests.
     primary_key = _discovery_key(*bounds)
     lock_key = primary_key + ":fetch-lock"
 
@@ -890,6 +882,10 @@ def fetch_external_places(south, west, north, east):
         )
 
         if stale is not None:
+            logger.warning(
+                "Serving stale OSM results while another "
+                "request refreshes discovery"
+            )
             return stale
 
         raise OSMServiceError(
@@ -897,13 +893,12 @@ def fetch_external_places(south, west, north, east):
         )
 
     try:
-        # Check cache again after acquiring the lock.
+        # Recheck the cache after obtaining the lock.
         fresh = _lookup_cached(keys, bounds)
 
         if fresh is not None:
             return fresh
 
-        # STEP 5: Expand viewport and build query.
         requested_bounds = _expanded_bounds(bounds)
 
         query = build_overpass_query(
@@ -917,14 +912,12 @@ def fetch_external_places(south, west, north, east):
             )
 
         except OSMServiceError:
-            # Temporarily pause new discovery attempts.
             cache.set(
                 cooldown_key,
                 True,
                 OVERPASS_ALL_FAILED_COOLDOWN,
             )
 
-            # Try older cached data.
             stale = _lookup_cached(
                 keys,
                 bounds,
@@ -939,7 +932,7 @@ def fetch_external_places(south, west, north, east):
 
             raise
 
-        # STEP 6: Normalize and deduplicate results.
+        # Normalize and deduplicate.
         places = []
         seen = set()
 
@@ -960,14 +953,17 @@ def fetch_external_places(south, west, north, east):
             seen.add(identifier)
             places.append(place)
 
-        # STEP 7: Cache the complete fetched area.
+            if len(places) >= MAX_RESULTS:
+                break
+
+        # Cache the new results.
         _store_cached(
             primary_key,
             requested_bounds,
             places,
         )
 
-        # Save a second, longer-lived stale copy.
+        # Keep a longer-lived stale copy for outages.
         _store_cached(
             primary_key,
             requested_bounds,
@@ -975,7 +971,11 @@ def fetch_external_places(south, west, north, east):
             stale=True,
         )
 
-        # STEP 8: Return only currently visible places.
+        logger.info(
+            "OSM discovery cached %s places",
+            len(places),
+        )
+
         return [
             place
             for place in places
@@ -983,7 +983,6 @@ def fetch_external_places(south, west, north, east):
         ][:MAX_RESULTS]
 
     finally:
-        # Always release the request lock.
         cache.delete(lock_key)
 
 
@@ -992,14 +991,7 @@ def fetch_external_places(south, west, north, east):
 # ============================================================
 
 def build_osm_api_url(osm_type, osm_id, full=False):
-    """
-    Construct a JSON URL for official OSM verification.
-
-    Example:
-    /api/0.6/node/123.json
-
-    Ways and relations can request /full geometry.
-    """
+    """Construct the official OSM API URL."""
 
     osm_type, osm_id = validate_osm_identifier(
         osm_type,
@@ -1019,12 +1011,7 @@ def build_osm_api_url(osm_type, osm_id, full=False):
 # ============================================================
 
 def calculate_geometry_center(coordinates):
-    """
-    Calculate a representative center from coordinates.
-
-    Use a circular mean for longitude so coordinates
-    near the international date line are handled.
-    """
+    """Calculate a representative center from coordinates."""
 
     valid = []
 
@@ -1086,18 +1073,7 @@ def extract_osm_geometry_center(
     osm_type,
     osm_id,
 ):
-    """
-    Find the representative center of an OSM element.
-
-    Node:
-        Use direct coordinates.
-
-    Way:
-        Use referenced node coordinates.
-
-    Relation:
-        Use coordinates from member nodes and ways.
-    """
+    """Find a representative center for a node, way, or relation."""
 
     if not isinstance(elements, list):
         return None
@@ -1182,13 +1158,10 @@ def extract_osm_geometry_center(
 
 def fetch_official_osm_element(osm_type, osm_id):
     """
-    Verify a place using the official OpenStreetMap API.
+    Verify an element using the official OSM API.
 
-    Unlike Overpass discovery, this checks an individual
-    OSM element by its type and ID.
-
-    If a way/relation lacks a center, fetch full geometry
-    and calculate a representative center.
+    If a way or relation lacks a center, fetch its full
+    geometry and calculate a representative center.
     """
 
     osm_type, osm_id = validate_osm_identifier(
@@ -1319,13 +1292,8 @@ def fetch_external_place_by_id(osm_type, osm_id):
     """
     Verify a single OSM place and cache the result.
 
-    Valid place:
-        Cache for 24 hours.
-
-    Missing place:
-        Cache NOT_FOUND for 5 minutes.
-
-    This reduces repeated official OSM API requests.
+    Valid place: 24-hour cache.
+    Missing place: 5-minute negative cache.
     """
 
     osm_type, osm_id = validate_osm_identifier(

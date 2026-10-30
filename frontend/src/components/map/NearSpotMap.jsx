@@ -1,9 +1,9 @@
-
 import { useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
   Marker,
+  Popup,
   Tooltip,
   useMap,
   useMapEvents,
@@ -27,7 +27,6 @@ import useLiveNavigation from "../../hooks/navigation/useLiveNavigation";
 import useRouteDeviation from "../../hooks/navigation/useRouteDeviation";
 import useTurnByTurnNavigation from "../../hooks/navigation/useTurnByTurnNavigation";
 
-
 // ============================================================
 // CONFIGURATION
 // ============================================================
@@ -44,10 +43,12 @@ const FAILED_REQUEST_COOLDOWN_MS = 60000;
 const MAX_CACHED_AREAS = 15;
 const MAX_FAILED_KEYS = 50;
 
-// Automatic rerouting
 const REROUTE_COOLDOWN_MS = 15000;
 const MAX_REROUTE_GPS_AGE_MS = 15000;
 const MAX_REROUTE_GPS_ACCURACY_METERS = 50;
+
+const MY_LOCATION_ZOOM = 18;
+const MY_LOCATION_ANIMATION_SECONDS = 1.5;
 
 // ============================================================
 // NEW SPOT MARKER
@@ -65,6 +66,25 @@ const newSpotIcon = L.divIcon({
   `,
   iconSize: [42, 42],
   iconAnchor: [21, 42],
+});
+
+// ============================================================
+// DESTINATION MARKER
+// ============================================================
+
+const destinationIcon = L.divIcon({
+  className: "bg-transparent border-0",
+  html: `
+    <div class="d-flex align-items-center justify-content-center
+                rounded-circle bg-danger text-white border border-3
+                border-white shadow-lg"
+         style="width:38px;height:38px;">
+      <i class="bi bi-geo-alt-fill fs-5"></i>
+    </div>
+  `,
+  iconSize: [38, 38],
+  iconAnchor: [19, 38],
+  popupAnchor: [0, -34],
 });
 
 // ============================================================
@@ -181,7 +201,7 @@ function isReliableLiveLocation(location) {
   if (
     location.accuracy == null ||
     !Number.isFinite(accuracy) ||
-    accuracy < 0 ||
+    accuracy <= 0 ||
     accuracy > MAX_REROUTE_GPS_ACCURACY_METERS
   ) {
     return false;
@@ -206,12 +226,26 @@ function isReliableLiveLocation(location) {
 function MapLocationController({
   location,
   navigationActive = false,
+  recenterRequest = 0,
+  zoom = MY_LOCATION_ZOOM,
 }) {
   const map = useMap();
   const previousLocationRef = useRef(null);
+  const lastRecenterRequestRef = useRef(recenterRequest);
 
+  function flyToLocation(latitude, longitude) {
+    map.invalidateSize();
+
+    map.flyTo([latitude, longitude], zoom, {
+      animate: true,
+      duration: MY_LOCATION_ANIMATION_SECONDS,
+      easeLinearity: 0.25,
+    });
+  }
+
+  // Fly to a new location when its coordinates change.
   useEffect(() => {
-    if (!location) return;
+    if (!location || navigationActive) return;
 
     const latitude = Number(location.latitude);
     const longitude = Number(location.longitude);
@@ -220,12 +254,12 @@ function MapLocationController({
       return;
     }
 
-    const previousLocation = previousLocationRef.current;
+    const previous = previousLocationRef.current;
 
     const locationChanged =
-      !previousLocation ||
-      previousLocation.latitude !== latitude ||
-      previousLocation.longitude !== longitude;
+      !previous ||
+      previous.latitude !== latitude ||
+      previous.longitude !== longitude;
 
     if (!locationChanged) return;
 
@@ -234,21 +268,65 @@ function MapLocationController({
       longitude,
     };
 
-    // NavigationCamera controls the map during navigation.
-    if (navigationActive) return;
-
-    map.invalidateSize();
-
-    map.flyTo([latitude, longitude], 15, {
-      animate: true,
-      duration: 1.2,
-    });
+    flyToLocation(latitude, longitude);
   }, [
     location?.latitude,
     location?.longitude,
     navigationActive,
     map,
+    zoom,
   ]);
+
+  // Clicking My Location triggers another fly-to, even if
+  // the coordinates are identical to the previous reading.
+  useEffect(() => {
+    if (recenterRequest === lastRecenterRequestRef.current) {
+      return;
+    }
+
+    lastRecenterRequestRef.current = recenterRequest;
+
+    if (!location || navigationActive) return;
+
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+
+    if (!isValidCoordinates(latitude, longitude)) {
+      return;
+    }
+
+    flyToLocation(latitude, longitude);
+  }, [
+    recenterRequest,
+    location,
+    navigationActive,
+    map,
+    zoom,
+  ]);
+
+  return null;
+}
+
+// ============================================================
+// DESTINATION FOCUS CONTROLLER
+// ============================================================
+
+function DestinationFocusController({ destination }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!destination) return;
+
+    const latitude = Number(destination.latitude);
+    const longitude = Number(destination.longitude);
+
+    if (!isValidCoordinates(latitude, longitude)) return;
+
+    map.flyTo([latitude, longitude], 17, {
+      animate: true,
+      duration: 1.5,
+    });
+  }, [destination?.latitude, destination?.longitude, map]);
 
   return null;
 }
@@ -276,10 +354,6 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
   useEffect(() => {
     let active = true;
-
-    // --------------------------------------------------------
-    // VIEWPORT
-    // --------------------------------------------------------
 
     function getViewport() {
       const zoom = map.getZoom();
@@ -315,10 +389,6 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
       return bounds;
     }
-
-    // --------------------------------------------------------
-    // CACHE
-    // --------------------------------------------------------
 
     function getRequestKey(bounds) {
       return [
@@ -357,20 +427,13 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
       );
     }
 
-    // --------------------------------------------------------
-    // FAILURE TRACKING
-    // --------------------------------------------------------
-
     function rememberFailure(requestKey) {
       failedRequestsRef.current.set(
         requestKey,
         Date.now()
       );
 
-      if (
-        failedRequestsRef.current.size >
-        MAX_FAILED_KEYS
-      ) {
+      if (failedRequestsRef.current.size > MAX_FAILED_KEYS) {
         const oldestKey = failedRequestsRef.current
           .keys()
           .next().value;
@@ -407,10 +470,6 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
       return SERVICE_COOLDOWN_MS;
     }
-
-    // --------------------------------------------------------
-    // FETCH PLACES
-    // --------------------------------------------------------
 
     async function fetchPlaces() {
       if (!active) return;
@@ -458,21 +517,16 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
       try {
         const response = await api.get(
           `${EXTERNAL_API}nearby/`,
-          {
-            params: bounds,
-          }
+          { params: bounds }
         );
 
         if (!active) return;
 
-        const places = Array.isArray(
-          response.data?.places
-        )
+        const places = Array.isArray(response.data?.places)
           ? response.data.places
           : [];
 
         storeCachedArea(bounds, places);
-
         failedRequestsRef.current.delete(requestKey);
         serviceRetryAfterRef.current = 0;
 
@@ -492,14 +546,11 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
         }
 
         const status = error?.response?.status;
-
         rememberFailure(requestKey);
 
         if (status === 503 || status === 429) {
-          const cooldown = getServerCooldown(error);
-
           serviceRetryAfterRef.current =
-            Date.now() + cooldown;
+            Date.now() + getServerCooldown(error);
 
           pendingRef.current = false;
 
@@ -529,10 +580,7 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
 
         console.warn(
           "External place discovery:",
-          getApiError(
-            error,
-            "Unable to load nearby places."
-          )
+          getApiError(error, "Unable to load nearby places.")
         );
       } finally {
         runningRef.current = false;
@@ -543,10 +591,6 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
         }
       }
     }
-
-    // --------------------------------------------------------
-    // DEBOUNCE
-    // --------------------------------------------------------
 
     function scheduleFetch() {
       if (!active) return;
@@ -569,14 +613,11 @@ function ExternalPlaceDiscovery({ onPlacesChange }) {
     }
 
     scheduleFetch();
-
     map.on("moveend", scheduleFetch);
 
     return () => {
       active = false;
-
       map.off("moveend", scheduleFetch);
-
       clearTimeout(debounceRef.current);
     };
   }, [map]);
@@ -597,14 +638,25 @@ function MapClickHandler({
     click(event) {
       const target = event.originalEvent?.target;
 
-      if (
-        target?.closest?.(
-          ".nearsport-external-marker, .leaflet-marker-icon, .leaflet-popup"
-        )
-      ) {
+      // Ignore clicks on markers, popups, tooltips, and interactive cards.
+      // These clicks should not accidentally close the selected place card.
+      const interactiveElement = target?.closest?.(
+        [
+          ".nearsport-external-marker",
+          ".leaflet-marker-icon",
+          ".leaflet-popup",
+          ".leaflet-tooltip",
+          ".nearsport-place-card",
+          ".nearsport-map-card",
+          "[data-map-interactive='true']",
+        ].join(", ")
+      );
+
+      if (interactiveElement) {
         return;
       }
 
+      // When selecting a spot, use the clicked map coordinates.
       if (isSelectingSpot) {
         onSpotLocationSelect?.({
           latitude: event.latlng.lat,
@@ -614,13 +666,13 @@ function MapClickHandler({
         return;
       }
 
-      onClose();
+      // Otherwise, clicking the empty map closes the selected place card.
+      onClose?.();
     },
   });
 
   return null;
 }
-
 // ============================================================
 // MAIN NEARSPOT MAP
 // ============================================================
@@ -637,48 +689,37 @@ function NearSpotMap({
   onDirectionsChange,
   navigationActionsRef,
 }) {
-  // ==========================================================
-  // EXTERNAL PLACE STATE
-  // ==========================================================
+  const [externalPlaces, setExternalPlaces] = useState([]);
+  const [selectedExternalPlace, setSelectedExternalPlace] =
+    useState(null);
 
-  const [externalPlaces, setExternalPlaces] =
-    useState([]);
-
-  const [
-    selectedExternalPlace,
-    setSelectedExternalPlace,
-  ] = useState(null);
-
-  // ==========================================================
-  // ROUTING STATE
-  // ==========================================================
+  const [selectedDestination, setSelectedDestination] =
+    useState(null);
 
   const [activeRoute, setActiveRoute] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState("");
-  const [destinationName, setDestinationName] = useState("Selected destination");
+  const [destinationName, setDestinationName] =
+    useState("Selected destination");
 
-  const [selectedMode, setSelectedMode] =
-    useState("driving");
+  const [selectedMode, setSelectedMode] = useState("driving");
 
-  // Automatic rerouting state
   const [isRerouting, setIsRerouting] = useState(false);
   const [rerouteError, setRerouteError] = useState("");
 
-  // Navigation camera controls (separate from GPS tracking).
   const cameraActionsRef = useRef(null);
-  const [isCameraFollowing, setIsCameraFollowing] = useState(true);
+  const [isCameraFollowing, setIsCameraFollowing] =
+    useState(true);
+
+  // Incrementing this forces a fly-to when My Location is clicked.
+  const [recenterRequest, setRecenterRequest] = useState(0);
 
   const {
     modes,
     loading: modesLoading,
     error: modesError,
   } = useTravelModes();
-
-  // ==========================================================
-  // LIVE GPS TRACKING
-  // ==========================================================
 
   const {
     currentLocation: liveLocation,
@@ -688,7 +729,6 @@ function NearSpotMap({
     stopTracking,
   } = useLiveNavigation();
 
-  // Track GPS only while navigation is active.
   useEffect(() => {
     if (isNavigating && activeRoute) {
       startTracking();
@@ -702,28 +742,16 @@ function NearSpotMap({
     stopTracking,
   ]);
 
-
-  
-  // ==========================================================
-  // OFF-ROUTE DETECTION
-  // ==========================================================
-
-  const {
-    isOffRoute,
-    distanceFromRoute,
-  } = useRouteDeviation({
-    location: liveLocation,
-    route: activeRoute,
-    enabled:
-      isNavigating &&
-      isTracking &&
-      Boolean(activeRoute) &&
-      !routeLoading,
-  });
-
-  // ==========================================================
-  // TURN-BY-TURN NAVIGATION
-  // ==========================================================
+  const { isOffRoute, distanceFromRoute } =
+    useRouteDeviation({
+      location: liveLocation,
+      route: activeRoute,
+      enabled:
+        isNavigating &&
+        isTracking &&
+        Boolean(activeRoute) &&
+        !routeLoading,
+    });
 
   const navigation = useTurnByTurnNavigation({
     route: activeRoute,
@@ -736,12 +764,6 @@ function NearSpotMap({
       !routeLoading,
   });
 
-
-
-  // ==========================================================
-  // REQUEST TRACKING
-  // ==========================================================
-
   const routeRequestIdRef = useRef(0);
   const routeLoadingRef = useRef(false);
   const processedDestinationRef = useRef(null);
@@ -753,13 +775,7 @@ function NearSpotMap({
   const reroutingRef = useRef(false);
   const lastRerouteAtRef = useRef(0);
   const lastRerouteFixRef = useRef(null);
-
-  // Used to invalidate pending rerouting when navigation stops.
   const navigationSessionRef = useRef(0);
-
-  // ==========================================================
-  // EXTERNAL PLACE SELECTION
-  // ==========================================================
 
   function handleExternalPlaceClick(place) {
     setSelectedExternalPlace(place);
@@ -769,38 +785,42 @@ function NearSpotMap({
     setSelectedExternalPlace(null);
   }
 
-  // ==========================================================
-  // ROUTE REQUEST HELPER
-  // ==========================================================
+  function handleSelectDestination(destination) {
+    const coordinates = getValidDestination(destination);
 
-  async function requestRoute({
-    origin,
-    destination,
-    mode,
-  }) {
-    const response = await api.post(
-      "/navigation/routes/",
-      {
-        origin_latitude: origin.latitude,
-        origin_longitude: origin.longitude,
-        destination_latitude: destination.latitude,
-        destination_longitude: destination.longitude,
-        travel_mode: mode,
-      }
-    );
+    if (!coordinates) return;
+
+    const name =
+      destination?.name ||
+      destination?.title ||
+      destination?.displayName ||
+      "Selected destination";
+
+    setSelectedDestination({
+      ...coordinates,
+      name,
+    });
+
+    setDestinationName(name);
+    destinationNameRef.current = name;
+    setRouteError("");
+  }
+
+  async function requestRoute({ origin, destination, mode }) {
+    const response = await api.post("/navigation/routes/", {
+      origin_latitude: origin.latitude,
+      origin_longitude: origin.longitude,
+      destination_latitude: destination.latitude,
+      destination_longitude: destination.longitude,
+      travel_mode: mode,
+    });
 
     if (!response.data?.features?.length) {
-      throw new Error(
-        "No route was returned for this destination."
-      );
+      throw new Error("No route was returned for this destination.");
     }
 
     return response.data;
   }
-
-  // ==========================================================
-  // GET DIRECTIONS
-  // ==========================================================
 
   async function handleGetDirections(
     destination,
@@ -808,13 +828,10 @@ function NearSpotMap({
   ) {
     if (routeLoadingRef.current) return;
 
-    const validDestination =
-      getValidDestination(destination);
+    const validDestination = getValidDestination(destination);
 
     if (!validDestination) {
-      setRouteError(
-        "Selected place has invalid coordinates."
-      );
+      setRouteError("Selected place has invalid coordinates.");
       return;
     }
 
@@ -824,24 +841,20 @@ function NearSpotMap({
       destination?.name ||
       destination?.title ||
       destination?.spot_name ||
-      (getValidDestination(destination) &&
-      currentDestinationRef.current?.latitude === validDestination.latitude &&
-      currentDestinationRef.current?.longitude === validDestination.longitude
+      (currentDestinationRef.current?.latitude ===
+        validDestination.latitude &&
+      currentDestinationRef.current?.longitude ===
+        validDestination.longitude
         ? destinationNameRef.current
         : "Selected destination");
 
-    const previousDestination =
-      currentDestinationRef.current;
+    const previousDestination = currentDestinationRef.current;
 
     const destinationChanged =
       !previousDestination ||
-      previousDestination.latitude !==
-        validDestination.latitude ||
-      previousDestination.longitude !==
-        validDestination.longitude;
+      previousDestination.latitude !== validDestination.latitude ||
+      previousDestination.longitude !== validDestination.longitude;
 
-    // A different destination begins a new navigation session.
-    // Switching travel modes for the same destination does not.
     if (destinationChanged) {
       navigationSessionRef.current += 1;
       setIsNavigating(false);
@@ -860,7 +873,6 @@ function NearSpotMap({
     try {
       let origin = null;
 
-      // While navigating, use the latest reliable GPS position.
       if (
         isNavigating &&
         !destinationChanged &&
@@ -872,7 +884,6 @@ function NearSpotMap({
         };
       }
 
-      // Otherwise get a fresh location.
       if (!origin) {
         if (!navigator.geolocation) {
           throw new Error(
@@ -880,23 +891,19 @@ function NearSpotMap({
           );
         }
 
-        const position = await new Promise(
-          (resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(
-              resolve,
-              reject,
-              {
-                enableHighAccuracy: true,
-                timeout: 15000,
-                maximumAge: 5000,
-              }
-            );
-          }
-        );
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            reject,
+            {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 5000,
+            }
+          );
+        });
 
-        if (requestId !== routeRequestIdRef.current) {
-          return;
-        }
+        if (requestId !== routeRequestIdRef.current) return;
 
         origin = {
           latitude: position.coords.latitude,
@@ -910,24 +917,24 @@ function NearSpotMap({
         mode,
       });
 
-      if (requestId !== routeRequestIdRef.current) {
-        return;
-      }
+      if (requestId !== routeRequestIdRef.current) return;
 
       setActiveRoute(route);
-
-      currentDestinationRef.current =
-        validDestination;
+      currentDestinationRef.current = validDestination;
       destinationNameRef.current = nextDestinationName;
       setDestinationName(nextDestinationName);
+
+      setSelectedDestination({
+        latitude: validDestination.latitude,
+        longitude: validDestination.longitude,
+        name: nextDestinationName,
+      });
 
       setSelectedExternalPlace(null);
       setRouteError("");
       setRerouteError("");
     } catch (error) {
-      if (requestId !== routeRequestIdRef.current) {
-        return;
-      }
+      if (requestId !== routeRequestIdRef.current) return;
 
       const locationMessage =
         error?.code === 1
@@ -942,8 +949,7 @@ function NearSpotMap({
         locationMessage ||
           getApiError(
             error,
-            error?.message ||
-              "Unable to calculate directions."
+            error?.message || "Unable to calculate directions."
           )
       );
     } finally {
@@ -954,16 +960,17 @@ function NearSpotMap({
     }
   }
 
-  // Retry the last manual directions request after a failure.
   function handleRetryDirections() {
     const attempt = lastRouteAttemptRef.current;
+
     if (!attempt || routeLoadingRef.current) return;
+
     handleGetDirections(attempt.destination, attempt.mode);
   }
 
-  // ==========================================================
+  // ============================================================
   // AUTOMATIC REROUTING
-  // ==========================================================
+  // ============================================================
 
   useEffect(() => {
     if (
@@ -977,34 +984,26 @@ function NearSpotMap({
       return;
     }
 
-    const destination =
-      currentDestinationRef.current;
+    const destination = currentDestinationRef.current;
 
-    if (!destination) return;
-
-    if (!isReliableLiveLocation(liveLocation)) {
+    if (!destination || !isReliableLiveLocation(liveLocation)) {
       return;
     }
 
     const fixTimestamp = Number(liveLocation.timestamp);
 
-    // Never retry repeatedly for the same GPS reading.
     if (lastRerouteFixRef.current === fixTimestamp) {
       return;
     }
 
     const now = Date.now();
 
-    if (
-      now - lastRerouteAtRef.current <
-      REROUTE_COOLDOWN_MS
-    ) {
+    if (now - lastRerouteAtRef.current < REROUTE_COOLDOWN_MS) {
       return;
     }
 
     const requestId = ++routeRequestIdRef.current;
-    const navigationSession =
-      navigationSessionRef.current;
+    const navigationSession = navigationSessionRef.current;
 
     const origin = {
       latitude: Number(liveLocation.latitude),
@@ -1031,8 +1030,7 @@ function NearSpotMap({
 
         if (
           requestId !== routeRequestIdRef.current ||
-          navigationSession !==
-            navigationSessionRef.current
+          navigationSession !== navigationSessionRef.current
         ) {
           return;
         }
@@ -1042,8 +1040,7 @@ function NearSpotMap({
       } catch (error) {
         if (
           requestId !== routeRequestIdRef.current ||
-          navigationSession !==
-            navigationSessionRef.current
+          navigationSession !== navigationSessionRef.current
         ) {
           return;
         }
@@ -1051,8 +1048,7 @@ function NearSpotMap({
         setRerouteError(
           getApiError(
             error,
-            error?.message ||
-              "Unable to calculate a new route."
+            error?.message || "Unable to calculate a new route."
           )
         );
       } finally {
@@ -1079,31 +1075,22 @@ function NearSpotMap({
     liveLocation?.timestamp,
   ]);
 
-  // ==========================================================
+  // ============================================================
   // TRAVEL MODE CHANGE
-  // ==========================================================
+  // ============================================================
 
   function handleModeChange(mode) {
-    if (
-      mode === selectedMode ||
-      routeLoadingRef.current
-    ) {
+    if (mode === selectedMode || routeLoadingRef.current) {
       return;
     }
 
     const supportedMode = modes.some(
-      (item) =>
-        (typeof item === "string"
-          ? item
-          : item.id) === mode
+      (item) => (typeof item === "string" ? item : item.id) === mode
     );
 
-    if (!supportedMode) {
-      return;
-    }
+    if (!supportedMode) return;
 
-    const destination =
-      currentDestinationRef.current;
+    const destination = currentDestinationRef.current;
 
     setSelectedMode(mode);
 
@@ -1112,9 +1099,9 @@ function NearSpotMap({
     }
   }
 
-  // ==========================================================
+  // ============================================================
   // AUTOMATIC NAVIGATION FROM APP
-  // ==========================================================
+  // ============================================================
 
   useEffect(() => {
     if (!navigationDestination) {
@@ -1122,13 +1109,8 @@ function NearSpotMap({
       return;
     }
 
-    const latitude = Number(
-      navigationDestination.latitude
-    );
-
-    const longitude = Number(
-      navigationDestination.longitude
-    );
+    const latitude = Number(navigationDestination.latitude);
+    const longitude = Number(navigationDestination.longitude);
 
     const destinationKey = [
       navigationDestination.id ?? "external",
@@ -1136,15 +1118,11 @@ function NearSpotMap({
       longitude,
     ].join(":");
 
-    if (
-      processedDestinationRef.current ===
-      destinationKey
-    ) {
+    if (processedDestinationRef.current === destinationKey) {
       return;
     }
 
-    processedDestinationRef.current =
-      destinationKey;
+    processedDestinationRef.current = destinationKey;
 
     handleGetDirections({
       ...navigationDestination,
@@ -1156,17 +1134,12 @@ function NearSpotMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigationDestination]);
 
-  // ==========================================================
+  // ============================================================
   // START / STOP NAVIGATION
-  // ==========================================================
+  // ============================================================
 
   function handleStartNavigation() {
-    if (
-      !activeRoute ||
-      routeLoadingRef.current
-    ) {
-      return;
-    }
+    if (!activeRoute || routeLoadingRef.current) return;
 
     navigationSessionRef.current += 1;
 
@@ -1177,7 +1150,6 @@ function NearSpotMap({
   function handleStopNavigation() {
     navigationSessionRef.current += 1;
 
-    // Invalidate an unfinished rerouting request.
     if (reroutingRef.current) {
       routeRequestIdRef.current += 1;
 
@@ -1194,9 +1166,9 @@ function NearSpotMap({
     stopTracking();
   }
 
-  // ==========================================================
+  // ============================================================
   // CLEAR ROUTE
-  // ==========================================================
+  // ============================================================
 
   function handleClearRoute() {
     navigationSessionRef.current += 1;
@@ -1221,22 +1193,23 @@ function NearSpotMap({
     currentDestinationRef.current = null;
     destinationNameRef.current = "Selected destination";
     setDestinationName("Selected destination");
+    setSelectedDestination(null);
 
     stopTracking();
   }
 
-  // ==========================================================
+  // ============================================================
   // SHARE DIRECTIONS WITH THE EXISTING SIDEBAR
-  // ==========================================================
+  // ============================================================
 
-  // Keep navigation controls available without moving routing state
-  // out of the map. This preserves GPS and automatic rerouting.
   if (navigationActionsRef) {
     navigationActionsRef.current = {
       clearRoute: handleClearRoute,
       changeMode: handleModeChange,
       startNavigation: handleStartNavigation,
       stopNavigation: handleStopNavigation,
+      getDirections: handleGetDirections,
+      selectDestination: handleSelectDestination,
     };
   }
 
@@ -1246,6 +1219,7 @@ function NearSpotMap({
     if (!onDirectionsChange) return;
 
     const visible = Boolean(activeRoute || routeLoading);
+
     const snapshot = visible
       ? {
           modes,
@@ -1266,18 +1240,17 @@ function NearSpotMap({
         }
       : null;
 
-    // Compare content, not object identities, to avoid parent/map
-    // render loops when hooks return new objects on each render.
     const signature = JSON.stringify(snapshot);
+
     if (signature !== lastDirectionsSnapshotRef.current) {
       lastDirectionsSnapshotRef.current = signature;
       onDirectionsChange(snapshot);
     }
   });
 
-  // ==========================================================
+  // ============================================================
   // MAP LOCATION VALIDATION
-  // ==========================================================
+  // ============================================================
 
   if (!location) return null;
 
@@ -1290,25 +1263,33 @@ function NearSpotMap({
 
   const position = [latitude, longitude];
 
-  // Preserve the original marker outside navigation.
   const displayedUserLocation =
     isNavigating && isTracking && liveLocation
       ? liveLocation
       : userLocation;
 
-  // ==========================================================
+  // ============================================================
+  // MY LOCATION BUTTON HANDLER
+  // ============================================================
+
+  async function handleMyLocationClick(...args) {
+    if (typeof onMyLocation === "function") {
+      await onMyLocation(...args);
+    }
+
+    // Trigger the map animation even if coordinates haven't changed.
+    setRecenterRequest((previous) => previous + 1);
+  }
+
+  // ============================================================
   // RENDER
-  // ==========================================================
+  // ============================================================
 
   return (
     <div
       className="position-relative w-100 h-100"
       style={{ minHeight: 400 }}
     >
-      {/* ======================================================
-          LEAFLET MAP
-      ====================================================== */}
-
       <MapContainer
         className="w-100 h-100 position-absolute top-0 start-0"
         center={position}
@@ -1316,18 +1297,18 @@ function NearSpotMap({
         scrollWheelZoom={true}
         zoomControl={false}
       >
-        {/* OPENSTREETMAP TILES */}
-
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* ACTIVE ROUTE */}
+        
+        <RouteLayer
+          route={activeRoute}
+          progressMeters={navigation.progressMeters}
+          isNavigating={isNavigating}
+        />
 
-        <RouteLayer route={activeRoute} />
-
-        {/* LIVE NAVIGATION CAMERA */}
 
         <NavigationCamera
           location={liveLocation}
@@ -1336,47 +1317,35 @@ function NearSpotMap({
           onFollowingChange={setIsCameraFollowing}
         />
 
-        {/* MAP CLICK HANDLER */}
-
         <MapClickHandler
           onClose={handleClosePlaceCard}
           isSelectingSpot={isSelectingSpot}
           onSpotLocationSelect={onSpotLocationSelect}
         />
 
-        {/* LOCATION CONTROLLER */}
-
         <MapLocationController
           location={location}
-          navigationActive={
-            isNavigating || routeLoading
-          }
+          navigationActive={isNavigating || routeLoading}
+          recenterRequest={recenterRequest}
+          zoom={MY_LOCATION_ZOOM}
         />
 
-        {/* EXTERNAL OSM DISCOVERY */}
+        <DestinationFocusController destination={selectedDestination} />
 
         <ExternalPlaceDiscovery
           onPlacesChange={setExternalPlaces}
         />
 
-        {/* MAP CONTROLS */}
-
         <MapControls
-          onMyLocation={onMyLocation}
+          onMyLocation={handleMyLocationClick}
         />
-
-        {/* USER LOCATION / NAVIGATION ARROW */}
 
         {displayedUserLocation && (
           <UserLocationMarker
             location={displayedUserLocation}
-            isNavigating={
-              isNavigating && isTracking
-            }
+            isNavigating={isNavigating && isTracking}
           />
         )}
-
-        {/* APPROVED SPOTS */}
 
         {spots.map((spot) => (
           <SpotMarker
@@ -1387,8 +1356,6 @@ function NearSpotMap({
           />
         ))}
 
-        {/* EXTERNAL OSM MARKERS */}
-
         {externalPlaces.map((place) => (
           <ExternalPlaceMarker
             key={`${place.osm_type}-${place.osm_id}`}
@@ -1397,7 +1364,18 @@ function NearSpotMap({
           />
         ))}
 
-        {/* DRAGGABLE NEW SPOT MARKER */}
+        {selectedDestination && (
+          <Marker
+            position={[
+              selectedDestination.latitude,
+              selectedDestination.longitude,
+            ]}
+            icon={destinationIcon}
+            zIndexOffset={900}
+          >
+            <Popup>{selectedDestination.name}</Popup>
+          </Marker>
+        )}
 
         {isSelectingSpot && selectedSpotLocation && (
           <Marker
@@ -1410,8 +1388,7 @@ function NearSpotMap({
             zIndexOffset={1000}
             eventHandlers={{
               dragend: (event) => {
-                const markerPosition =
-                  event.target.getLatLng();
+                const markerPosition = event.target.getLatLng();
 
                 onSpotLocationSelect?.({
                   latitude: markerPosition.lat,
@@ -1420,17 +1397,13 @@ function NearSpotMap({
               },
             }}
           >
-            <Tooltip
-              direction="top"
-              offset={[0, -35]}
-            >
+            <Tooltip direction="top" offset={[0, -35]}>
               Drag to adjust your HiddenSpot location
             </Tooltip>
           </Marker>
         )}
       </MapContainer>
 
-      {/* Recenter is always available while live navigation is active. */}
       {isNavigating && isTracking && (
         <button
           type="button"
@@ -1452,25 +1425,16 @@ function NearSpotMap({
         </button>
       )}
 
-      {/* ======================================================
-          REROUTING STATUS
-      ====================================================== */}
-
       {isNavigating && isRerouting && (
         <div
           className="position-absolute top-0 start-50 translate-middle-x mt-3 alert alert-info shadow-sm d-flex align-items-center gap-2"
           style={{ zIndex: 1200 }}
           role="status"
         >
-          <span
-            className="spinner-border spinner-border-sm"
-            aria-hidden="true"
-          />
+          <span className="spinner-border spinner-border-sm" aria-hidden="true" />
           <span>Recalculating route...</span>
         </div>
       )}
-
-      {/* OFF-ROUTE STATUS */}
 
       {isNavigating &&
         isOffRoute &&
@@ -1490,8 +1454,6 @@ function NearSpotMap({
           </div>
         )}
 
-      {/* REROUTING ERROR */}
-
       {isNavigating && rerouteError && (
         <div
           className="position-absolute top-0 start-50 translate-middle-x mt-3 alert alert-warning shadow-sm d-flex align-items-center gap-2"
@@ -1499,7 +1461,6 @@ function NearSpotMap({
           role="alert"
         >
           <span>{rerouteError}</span>
-
           <button
             type="button"
             className="btn-close"
@@ -1509,20 +1470,15 @@ function NearSpotMap({
         </div>
       )}
 
-      {/* TRAVEL MODE ERROR */}
-
       {modesError && (activeRoute || routeLoading) && (
         <div
           className="position-absolute top-0 start-50 translate-middle-x mt-3 alert alert-warning shadow-sm"
           style={{ zIndex: 1200 }}
           role="alert"
         >
-          Unable to load travel modes. Please try
-          refreshing the page.
+          Unable to load travel modes. Please try refreshing the page.
         </div>
       )}
-
-      {/* ROUTE ERROR */}
 
       {routeError && (
         <div
@@ -1552,16 +1508,9 @@ function NearSpotMap({
         </div>
       )}
 
-      {/* ======================================================
-          SELECTED EXTERNAL PLACE CARD
-      ====================================================== */}
-
       {selectedExternalPlace && (
         <SelectedExternalPlaceCard
-          key={
-            `${selectedExternalPlace.osm_type}-` +
-            `${selectedExternalPlace.osm_id}`
-          }
+          key={`${selectedExternalPlace.osm_type}-${selectedExternalPlace.osm_id}`}
           place={selectedExternalPlace}
           onClose={handleClosePlaceCard}
           onGetDirections={handleGetDirections}

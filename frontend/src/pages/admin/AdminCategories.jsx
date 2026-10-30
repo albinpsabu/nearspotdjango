@@ -413,11 +413,12 @@ function AdminCategories() {
             type="button"
             className="btn rounded-3 px-3"
             style={{
-              backgroundColor: "#20d9ae",
-              borderColor: "#20d9ae",
-              color: "#06352b",
+              backgroundColor: "#FFC21A",
+              borderColor: "#FFC21A",
+              color: "#292929",
               fontSize: "12px",
               fontWeight: 600,
+              boxShadow: "0 3px 10px rgba(255, 194, 26, 0.18)",
             }}
             onClick={openAddModal}
           >
@@ -487,38 +488,185 @@ function AdminCategories() {
       </div>
 
       {/* SEARCH AND FILTERS */}
-      <div className="card border-0 shadow-sm rounded-4 mb-3">
+      <div
+        className="card rounded-4 mb-3"
+        style={{
+          backgroundColor: "#FFFFFF",
+          border: "1px solid #E5E5E5",
+          borderTop: "3px solid #FFC21A",
+          boxShadow: "0 4px 18px rgba(41, 41, 41, 0.04)",
+        }}
+      >
         <div className="card-body p-3 p-md-4">
-          <div className="row g-2">
+          <div className="row g-3">
             <div className="col-12 col-lg-8">
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Search categories..."
-                aria-label="Search categories"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+              <label
+                htmlFor="categorySearch"
+                className="form-label mb-2"
+                style={{
+                  color: "#292929",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                }}
+              >
+                Search categories
+              </label>
+
+              <div
+                className="d-flex align-items-center"
+                style={{
+                  minHeight: "52px",
+                  padding: "0 14px",
+                  gap: "12px",
+                  backgroundColor: "#FFFFFF",
+                  border: "1px solid #E5E5E5",
+                  borderRadius: "12px",
+                  transition:
+                    "border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease",
+                }}
+                onFocusCapture={(event) => {
+                  event.currentTarget.style.borderColor = "#FFC21A";
+                  event.currentTarget.style.boxShadow =
+                    "0 0 0 3px rgba(255, 194, 26, 0.16)";
+                  event.currentTarget.style.backgroundColor = "#FFFEFA";
+                }}
+                onBlurCapture={(event) => {
+                  event.currentTarget.style.borderColor = "#E5E5E5";
+                  event.currentTarget.style.boxShadow = "none";
+                  event.currentTarget.style.backgroundColor = "#FFFFFF";
+                }}
+              >
+                <i
+                  className="bi bi-search flex-shrink-0"
+                  aria-hidden="true"
+                  style={{
+                    color: search ? "#292929" : "#858585",
+                    fontSize: "17px",
+                  }}
+                />
+
+                <input
+                  id="categorySearch"
+                  type="search"
+                  className="form-control border-0 shadow-none"
+                  placeholder="Search by category name or description..."
+                  aria-label="Search categories by name or description"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  style={{
+                    minWidth: 0,
+                    height: "48px",
+                    padding: "0",
+                    backgroundColor: "transparent",
+                    color: "#292929",
+                    fontSize: "14px",
+                    outline: "none",
+                  }}
+                />
+
+                {search && (
+                  <button
+                    type="button"
+                    className="btn border-0 d-flex align-items-center justify-content-center flex-shrink-0"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear category search"
+                    title="Clear search"
+                    style={{
+                      width: "30px",
+                      height: "30px",
+                      padding: 0,
+                      borderRadius: "8px",
+                      color: "#777777",
+                      backgroundColor: "#FFF5D6",
+                    }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = "#FFE8A0";
+                      event.currentTarget.style.color = "#292929";
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = "#FFF5D6";
+                      event.currentTarget.style.color = "#777777";
+                    }}
+                  >
+                    <i className="bi bi-x-lg" />
+                  </button>
+                )}
+              </div>
+
+              <div
+                className="mt-2"
+                style={{ color: "#858585", fontSize: "11px" }}
+              >
+                Search across category names and descriptions
+              </div>
             </div>
 
             <div className="col-12 col-lg-4">
+              <label
+                htmlFor="categoryStatusFilter"
+                className="form-label mb-2"
+                style={{
+                  color: "#292929",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                }}
+              >
+                Status
+              </label>
+
               <select
-                className="form-select"
+                id="categoryStatusFilter"
+                className="form-select shadow-none"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                aria-label="Filter categories"
+                aria-label="Filter categories by status"
+                style={{
+                  height: "52px",
+                  border: "1px solid #E5E5E5",
+                  borderRadius: "12px",
+                  backgroundColor: statusFilter === "ALL" ? "#FFFFFF" : "#FFFDF5",
+                  color: "#292929",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                  transition:
+                    "border-color 0.18s ease, box-shadow 0.18s ease",
+                }}
+                onFocus={(event) => {
+                  event.currentTarget.style.borderColor = "#FFC21A";
+                  event.currentTarget.style.boxShadow =
+                    "0 0 0 3px rgba(255, 194, 26, 0.16)";
+                }}
+                onBlur={(event) => {
+                  event.currentTarget.style.borderColor = "#E5E5E5";
+                  event.currentTarget.style.boxShadow = "none";
+                }}
               >
                 <option value="ALL">All categories</option>
                 <option value="ACTIVE">Active</option>
                 <option value="INACTIVE">Inactive</option>
               </select>
+
+              <div
+                className="mt-2"
+                style={{ color: "#858585", fontSize: "11px" }}
+              >
+                Narrow results by availability
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* CATEGORIES TABLE */}
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+      <div
+        className="card rounded-4 overflow-hidden"
+        style={{
+          border: "1px solid #E5E5E5",
+          borderTop: "3px solid #FFC21A",
+          boxShadow: "0 4px 18px rgba(41, 41, 41, 0.04)",
+          backgroundColor: "#FFFFFF",
+        }}
+      >
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
             <h5
@@ -715,7 +863,13 @@ function AdminCategories() {
           }}
         >
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 rounded-4 shadow">
+            <div
+              className="modal-content rounded-4 shadow"
+              style={{
+                borderTop: "3px solid #FFC21A",
+                backgroundColor: "#FFFFFF",
+              }}
+            >
               <div className="modal-header px-4 py-3">
                 <div>
                   <h5
@@ -839,10 +993,11 @@ function AdminCategories() {
                       type="submit"
                       className="btn rounded-3 px-4"
                       style={{
-                        backgroundColor: "#20d9ae",
-                        borderColor: "#20d9ae",
-                        color: "#06352b",
+                        backgroundColor: "#FFC21A",
+                        borderColor: "#FFC21A",
+                        color: "#292929",
                         fontWeight: 600,
+                        boxShadow: "0 3px 10px rgba(255, 194, 26, 0.18)",
                       }}
                       disabled={saving}
                     >
@@ -873,7 +1028,13 @@ function AdminCategories() {
           }}
         >
           <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-            <div className="modal-content border-0 rounded-4 shadow">
+            <div
+              className="modal-content rounded-4 shadow"
+              style={{
+                borderTop: "3px solid #FFC21A",
+                backgroundColor: "#FFFFFF",
+              }}
+            >
               <div className="modal-header">
                 <div>
                   <h5 className="modal-title fw-bold">
@@ -967,7 +1128,13 @@ function AdminCategories() {
           }}
         >
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 rounded-4 shadow">
+            <div
+              className="modal-content rounded-4 shadow"
+              style={{
+                borderTop: "3px solid #FFC21A",
+                backgroundColor: "#FFFFFF",
+              }}
+            >
               <div className="modal-header">
                 <h5 className="modal-title fw-bold">
                   {confirmAction.type === "delete"

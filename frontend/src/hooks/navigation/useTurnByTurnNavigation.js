@@ -24,7 +24,6 @@ function projectPoint(coordinate, reference) {
       EARTH_RADIUS_METERS *
       toRadians(coordinate[0] - reference.longitude) *
       Math.cos(latitude),
-
     y:
       EARTH_RADIUS_METERS *
       toRadians(coordinate[1] - reference.latitude),
@@ -82,10 +81,9 @@ function findNearestRoutePosition(
 
     const progress = cumulativeDistances
       ? cumulativeDistances[index] +
-        (
-          cumulativeDistances[index + 1] -
-          cumulativeDistances[index]
-        ) * fraction
+        (cumulativeDistances[index + 1] -
+          cumulativeDistances[index]) *
+          fraction
       : 0;
 
     // Prefer plausible forward positions on crossing routes.
@@ -100,10 +98,8 @@ function findNearestRoutePosition(
     if (
       !nearest ||
       distance < nearest.distance ||
-      (
-        Math.abs(distance - nearest.distance) < 3 &&
-        progress < nearest.progress
-      )
+      (Math.abs(distance - nearest.distance) < 3 &&
+        progress < nearest.progress)
     ) {
       nearest = {
         segmentIndex: index,
@@ -133,20 +129,14 @@ function distanceBetweenCoordinates(start, end) {
   return (
     2 *
     EARTH_RADIUS_METERS *
-    Math.asin(
-      Math.sqrt(Math.min(1, Math.max(0, a)))
-    )
+    Math.asin(Math.sqrt(Math.min(1, Math.max(0, a))))
   );
 }
 
 function buildCumulativeDistances(coordinates) {
   const distances = [0];
 
-  for (
-    let index = 1;
-    index < coordinates.length;
-    index++
-  ) {
+  for (let index = 1; index < coordinates.length; index++) {
     distances.push(
       distances[index - 1] +
         distanceBetweenCoordinates(
@@ -199,28 +189,21 @@ export default function useTurnByTurnNavigation({
     const coordinates =
       route?.features?.[0]?.geometry?.coordinates;
 
-    if (
-      !Array.isArray(coordinates) ||
-      coordinates.length < 2
-    ) {
+    if (!Array.isArray(coordinates) || coordinates.length < 2) {
       return null;
     }
 
     const cumulativeDistances =
       buildCumulativeDistances(coordinates);
 
-    const instructions =
-      extractRouteInstructions(route);
+    const instructions = extractRouteInstructions(route);
 
     const totalDistance =
-      cumulativeDistances[
-        cumulativeDistances.length - 1
-      ];
+      cumulativeDistances[cumulativeDistances.length - 1];
 
     const durationFromSegments =
       route?.features?.[0]?.properties?.segments?.reduce(
-        (sum, segment) =>
-          sum + (Number(segment.duration) || 0),
+        (sum, segment) => sum + (Number(segment.duration) || 0),
         0
       );
 
@@ -229,12 +212,11 @@ export default function useTurnByTurnNavigation({
     );
 
     const totalDuration =
-      Number.isFinite(summaryDuration) &&
-      summaryDuration > 0
+      Number.isFinite(summaryDuration) && summaryDuration > 0
         ? summaryDuration
         : durationFromSegments > 0
-        ? durationFromSegments
-        : null;
+          ? durationFromSegments
+          : null;
 
     return {
       coordinates,
@@ -297,8 +279,7 @@ export default function useTurnByTurnNavigation({
 
     if (
       !nearest ||
-      nearest.distance >
-        MAX_DISTANCE_FROM_ROUTE_METERS
+      nearest.distance > MAX_DISTANCE_FROM_ROUTE_METERS
     ) {
       setHasReliablePosition(false);
       return;
@@ -315,15 +296,12 @@ export default function useTurnByTurnNavigation({
     setHasReliablePosition(true);
 
     const destination =
-      routeData.coordinates[
-        routeData.coordinates.length - 1
-      ];
+      routeData.coordinates[routeData.coordinates.length - 1];
 
-    const destinationDistance =
-      distanceBetweenCoordinates(
-        [longitude, latitude],
-        destination
-      );
+    const destinationDistance = distanceBetweenCoordinates(
+      [longitude, latitude],
+      destination
+    );
 
     if (
       !arrivedRef.current &&
@@ -346,6 +324,7 @@ export default function useTurnByTurnNavigation({
   return useMemo(() => {
     if (!routeData) {
       return {
+        progressMeters: 0,
         currentInstruction: null,
         nextInstruction: null,
         distanceToNextTurn: null,
@@ -366,18 +345,17 @@ export default function useTurnByTurnNavigation({
       totalDuration,
     } = routeData;
 
-    const nextInstructionIndex =
-      instructions.findIndex((instruction) => {
-        const index =
-          instruction.startWaypointIndex;
+    const nextInstructionIndex = instructions.findIndex(
+      (instruction) => {
+        const index = instruction.startWaypointIndex;
 
         return (
           Number.isInteger(index) &&
           Number.isFinite(cumulativeDistances[index]) &&
-          cumulativeDistances[index] >
-            progressMeters + 5
+          cumulativeDistances[index] > progressMeters + 5
         );
-      });
+      }
+    );
 
     const upcomingIndex =
       nextInstructionIndex === -1
@@ -385,9 +363,7 @@ export default function useTurnByTurnNavigation({
         : nextInstructionIndex;
 
     const currentInstruction =
-      instructions[
-        Math.max(0, upcomingIndex - 1)
-      ] || null;
+      instructions[Math.max(0, upcomingIndex - 1)] || null;
 
     const nextInstruction =
       instructions[upcomingIndex] || null;
@@ -400,10 +376,7 @@ export default function useTurnByTurnNavigation({
 
     const distanceToNextTurn =
       Number.isFinite(nextTurnPosition)
-        ? Math.max(
-            0,
-            nextTurnPosition - progressMeters
-          )
+        ? Math.max(0, nextTurnPosition - progressMeters)
         : null;
 
     const remainingDistance = Math.max(
@@ -411,15 +384,14 @@ export default function useTurnByTurnNavigation({
       totalDistance - progressMeters
     );
 
-    // ETA based on the remaining proportion of the
-    // original OpenRouteService route duration.
+    // ETA based on the remaining proportion of the original route.
     const remainingDuration =
       totalDuration == null || totalDistance <= 0
         ? null
-        : totalDuration *
-          (remainingDistance / totalDistance);
+        : totalDuration * (remainingDistance / totalDistance);
 
     return {
+      progressMeters,
       currentInstruction,
       nextInstruction,
 
@@ -427,15 +399,11 @@ export default function useTurnByTurnNavigation({
       distanceToNextTurnText:
         distanceToNextTurn == null
           ? "--"
-          : formatNavigationDistance(
-              distanceToNextTurn
-            ),
+          : formatNavigationDistance(distanceToNextTurn),
 
       remainingDistance,
       remainingDistanceText:
-        formatNavigationDistance(
-          remainingDistance
-        ),
+        formatNavigationDistance(remainingDistance),
 
       remainingDuration,
       remainingDurationText:

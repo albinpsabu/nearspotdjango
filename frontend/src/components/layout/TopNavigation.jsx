@@ -41,51 +41,24 @@ function TopNavigation({ onLocationSelect }) {
       ================================================== */}
 
       <div
-        className="bg-white border rounded-4 shadow-sm d-flex align-items-center gap-2 px-3 flex-shrink-0 pe-auto"
+        className="bg-white border rounded-4 shadow-sm d-flex align-items-center justify-content-center px-3 flex-shrink-0 pe-auto"
         style={{
           height: "54px",
+          minWidth: "54px",
         }}
       >
-        {/* Logo Icon */}
-
-        <div
-          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+        <img
+          src="/logo.png"
+          alt="NearSpot"
           style={{
-            width: "28px",
-            height: "28px",
-            backgroundColor: "#20d9ae",
-            fontSize: "14px",
+            display: "block",
+            width: "auto",
+            height: "auto",
+            maxWidth: "160px",
+            maxHeight: "42px",
+            objectFit: "contain",
           }}
-        >
-          N
-        </div>
-
-        {/* Logo Text */}
-
-        <div className="d-none d-md-block">
-          <div
-            className="fw-bold lh-1"
-            style={{
-              color: "#162326",
-              fontSize: "16px",
-            }}
-          >
-            Near
-            <span style={{ color: "#12cfa4" }}>
-              Spot
-            </span>
-          </div>
-
-          <div
-            className="mt-1"
-            style={{
-              color: "#7c8b8e",
-              fontSize: "9px",
-            }}
-          >
-            Discover hidden places
-          </div>
-        </div>
+        />
       </div>
 
       {/* ==================================================
@@ -117,9 +90,7 @@ function TopNavigation({ onLocationSelect }) {
             minWidth: 0,
           }}
         >
-          <PlaceSearch
-            onLocationSelect={onLocationSelect}
-          />
+          <PlaceSearch onLocationSelect={onLocationSelect} />
         </div>
       </div>
 
@@ -142,8 +113,7 @@ function TopNavigation({ onLocationSelect }) {
             width: "8px",
             height: "8px",
             backgroundColor: "#20d9ae",
-            boxShadow:
-              "0 0 0 4px rgba(32, 217, 174, 0.15)",
+            boxShadow: "0 0 0 4px rgba(32, 217, 174, 0.15)",
           }}
         />
 

@@ -51,13 +51,13 @@ function getSpotName(report) {
 
 function getStatusStyle(status) {
   const styles = {
-    PENDING: { color: "#b7791f", background: "#fff7e6" },
-    REVIEWED: { color: "#2563a6", background: "#eaf3ff" },
-    RESOLVED: { color: "#16866d", background: "#e6f7f1" },
+    PENDING: { color: "#8A6500", background: "#FFF5D6" },
+    REVIEWED: { color: "#805B16", background: "#FFF5D6" },
+    RESOLVED: { color: "#6B5200", background: "#FFF5D6" },
   };
 
   return styles[status] || {
-    color: "#687779",
+    color: "#666666",
     background: "#f0f2f3",
   };
 }
@@ -88,12 +88,12 @@ function getApiError(error, fallback) {
 function StatCard({ title, value, color, description, loading }) {
   return (
     <div className="col-12 col-sm-6 col-xl-3">
-      <div className="card border-0 shadow-sm rounded-4 h-100">
+      <div className="card shadow-sm rounded-4 h-100 reports-theme-card">
         <div className="card-body p-4">
           <div
             className="mb-2"
             style={{
-              color: "#7c8b8e",
+              color: "#666666",
               fontSize: "11px",
               fontWeight: 600,
             }}
@@ -103,7 +103,7 @@ function StatCard({ title, value, color, description, loading }) {
 
           <div
             className="fw-bold"
-            style={{ color: "#1d2b2e", fontSize: "26px" }}
+            style={{ color: "#292929", fontSize: "26px" }}
           >
             {loading ? "…" : value}
           </div>
@@ -243,19 +243,56 @@ function AdminReports() {
 
   return (
     <AdminLayout>
+      <style>{`
+        .reports-theme-card {
+          border: 1px solid #E5E5E5 !important;
+          border-top: 3px solid #FFC21A !important;
+          background: #FFFFFF;
+        }
+        .reports-theme-card .card-body {
+          background-color: #FFFFFF;
+        }
+        .reports-search-icon {
+          background: #FFFFFF !important;
+          color: #8A6500;
+          border: 1px solid #E5E5E5 !important;
+          border-right: 0 !important;
+          border-radius: 10px 0 0 10px !important;
+        }
+        .reports-search-input {
+          border: 1px solid #E5E5E5 !important;
+          border-left: 0 !important;
+          border-radius: 0 10px 10px 0 !important;
+          box-shadow: none !important;
+        }
+        .reports-search-input:focus,
+        .reports-filter-select:focus {
+          border-color: #FFC21A !important;
+          box-shadow: 0 0 0 3px rgba(255, 194, 26, 0.22) !important;
+          outline: none;
+        }
+        .reports-filter-select {
+          border-color: #E5E5E5;
+          border-radius: 10px;
+          box-shadow: none;
+        }
+        .reports-theme-card .table thead th {
+          background-color: #FFF9E8;
+        }
+      `}</style>
       {/* Page header */}
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1
             className="fw-bold mb-1"
-            style={{ color: "#1d2b2e", fontSize: "24px" }}
+            style={{ color: "#292929", fontSize: "24px" }}
           >
             Reports
           </h1>
 
           <p
             className="mb-0"
-            style={{ color: "#7c8b8e", fontSize: "13px" }}
+            style={{ color: "#666666", fontSize: "13px" }}
           >
             Review reports and manage reported NearSpot content.
           </p>
@@ -265,7 +302,7 @@ function AdminReports() {
           type="button"
           className="btn btn-light border rounded-3 px-3"
           style={{
-            color: "#536366",
+            color: "#555555",
             fontSize: "12px",
             fontWeight: 600,
           }}
@@ -318,14 +355,14 @@ function AdminReports() {
         <StatCard
           title="TOTAL REPORTS"
           value={statistics.total}
-          color="#1d2b2e"
+          color="#292929"
           description="All submitted reports"
           loading={loading}
         />
         <StatCard
           title="PENDING"
           value={statistics.pending}
-          color="#c78318"
+          color="#A87400"
           description="Requires review"
           loading={loading}
         />
@@ -339,25 +376,25 @@ function AdminReports() {
         <StatCard
           title="RESOLVED"
           value={statistics.resolved}
-          color="#16866d"
+          color="#8A6500"
           description="Reports resolved"
           loading={loading}
         />
       </div>
 
       {/* Search and filters */}
-      <div className="card border-0 shadow-sm rounded-4 mb-3">
+      <div className="card shadow-sm rounded-4 mb-3 reports-theme-card">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
             <div className="col-12 col-lg-6">
               <div className="input-group">
-                <span className="input-group-text bg-white border-end-0">
+                <span className="input-group-text reports-search-icon">
                   ⌕
                 </span>
 
                 <input
                   type="text"
-                  className="form-control border-start-0"
+                  className="form-control reports-search-input"
                   placeholder="Search reports..."
                   aria-label="Search reports"
                   value={search}
@@ -368,7 +405,7 @@ function AdminReports() {
 
             <div className="col-12 col-sm-6 col-lg-3">
               <select
-                className="form-select"
+                className="form-select reports-filter-select"
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(event.target.value)
@@ -386,7 +423,7 @@ function AdminReports() {
 
             <div className="col-12 col-sm-6 col-lg-3">
               <select
-                className="form-select"
+                className="form-select reports-filter-select"
                 value="ALL"
                 disabled
                 aria-label="Report type"
@@ -400,19 +437,19 @@ function AdminReports() {
       </div>
 
       {/* Reports table */}
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+      <div className="card shadow-sm rounded-4 overflow-hidden reports-theme-card">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
             <h5
               className="fw-semibold mb-1"
-              style={{ color: "#1d2b2e", fontSize: "16px" }}
+              style={{ color: "#292929", fontSize: "16px" }}
             >
               Reported Content
             </h5>
 
             <p
               className="mb-0"
-              style={{ color: "#8a989a", fontSize: "12px" }}
+              style={{ color: "#777777", fontSize: "12px" }}
             >
               Review reports submitted by the NearSpot community.
             </p>
@@ -420,7 +457,7 @@ function AdminReports() {
 
           <div className="table-responsive">
             <table className="table align-middle mb-0">
-              <thead>
+              <thead style={{ backgroundColor: "#FFF9E8" }}>
                 <tr>
                   {[
                     "REPORT",
@@ -434,7 +471,7 @@ function AdminReports() {
                       key={heading}
                       className="px-3 py-3"
                       style={{
-                        color: "#7c8b8e",
+                        color: "#666666",
                         fontSize: "10px",
                         fontWeight: 700,
                         whiteSpace: "nowrap",
@@ -480,7 +517,7 @@ function AdminReports() {
                           <div
                             className="fw-semibold mb-1"
                             style={{
-                              color: "#1d2b2e",
+                              color: "#292929",
                               fontSize: "12px",
                             }}
                           >
@@ -489,7 +526,7 @@ function AdminReports() {
 
                           <div
                             style={{
-                              color: "#7c8b8e",
+                              color: "#666666",
                               fontSize: "12px",
                               whiteSpace: "normal",
                               overflowWrap: "anywhere",
@@ -502,7 +539,7 @@ function AdminReports() {
                         <td
                           className="py-3"
                           style={{
-                            color: "#536366",
+                            color: "#555555",
                             fontSize: "12px",
                             minWidth: "130px",
                           }}
@@ -513,7 +550,7 @@ function AdminReports() {
                         <td
                           className="py-3"
                           style={{
-                            color: "#536366",
+                            color: "#555555",
                             fontSize: "12px",
                             minWidth: "150px",
                           }}
@@ -526,7 +563,7 @@ function AdminReports() {
                             <div
                               className="mt-1"
                               style={{
-                                color: "#8a989a",
+                                color: "#777777",
                                 fontSize: "11px",
                               }}
                             >
@@ -552,7 +589,7 @@ function AdminReports() {
                         <td
                           className="py-3"
                           style={{
-                            color: "#7c8b8e",
+                            color: "#666666",
                             fontSize: "12px",
                             whiteSpace: "nowrap",
                           }}
@@ -571,7 +608,7 @@ function AdminReports() {
                                 className="btn btn-sm rounded-3"
                                 style={{
                                   color: "#2563a6",
-                                  background: "#eaf3ff",
+                                  background: "#FFF5D6",
                                   fontSize: "11px",
                                   fontWeight: 600,
                                 }}
@@ -589,8 +626,8 @@ function AdminReports() {
                                 type="button"
                                 className="btn btn-sm rounded-3"
                                 style={{
-                                  color: "#16866d",
-                                  background: "#e6f7f1",
+                                  color: "#8A6500",
+                                  background: "#FFF5D6",
                                   fontSize: "11px",
                                   fontWeight: 600,
                                 }}
@@ -606,7 +643,7 @@ function AdminReports() {
                             {report.status === "RESOLVED" && (
                               <span
                                 style={{
-                                  color: "#16866d",
+                                  color: "#8A6500",
                                   fontSize: "11px",
                                 }}
                               >
@@ -626,7 +663,7 @@ function AdminReports() {
           {!loading && filteredReports.length > 0 && (
             <div
               className="d-flex flex-column flex-sm-row justify-content-between gap-2 px-3 px-md-4 py-3 border-top"
-              style={{ color: "#8a989a", fontSize: "11px" }}
+              style={{ color: "#777777", fontSize: "11px" }}
             >
               <span>
                 Showing {filteredReports.length} of {reports.length} reports

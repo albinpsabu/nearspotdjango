@@ -10,15 +10,17 @@ const externalPlaceIcon = L.divIcon({
   className: "nearsport-external-marker",
 
   html: `
-    <div style="
-      width: 13px;
-      height: 13px;
-      background: #10b981;
-      border: 2px solid white;
-      border-radius: 50%;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-      cursor: pointer;
-    "></div>
+    <div
+      style="
+        width: 13px;
+        height: 13px;
+        background: #10b981;
+        border: 2px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        cursor: pointer;
+      "
+    ></div>
   `,
 
   iconSize: [17, 17],
@@ -43,7 +45,11 @@ function ExternalPlaceMarker({ place, onPlaceClick }) {
 
   if (
     !Number.isFinite(latitude) ||
-    !Number.isFinite(longitude)
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
   ) {
     return null;
   }
@@ -54,12 +60,9 @@ function ExternalPlaceMarker({ place, onPlaceClick }) {
   // HANDLE MARKER CLICK
   // ==========================================================
 
-  function handleMarkerClick() {
-    console.log(
-      "MARKER CLICKED:",
-      place.name,
-      place
-    );
+  function handleMarkerClick(event) {
+    // Prevent this marker click from propagating to the map.
+    event?.originalEvent?.stopPropagation?.();
 
     if (typeof onPlaceClick === "function") {
       onPlaceClick(place);

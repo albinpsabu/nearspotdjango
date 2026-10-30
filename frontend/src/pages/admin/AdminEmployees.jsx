@@ -288,12 +288,12 @@ function AdminEmployees() {
   };
 
   const headingStyle = {
-    color: "#1d2b2e",
+    color: "#292929",
     fontSize: "24px",
   };
 
   const labelStyle = {
-    color: "#7c8b8e",
+    color: "#666666",
     fontSize: "10px",
     fontWeight: 700,
     whiteSpace: "nowrap",
@@ -301,6 +301,40 @@ function AdminEmployees() {
 
   return (
     <AdminLayout>
+      <style>{`
+        .employee-theme-card {
+          border: 1px solid #E5E5E5 !important;
+          border-top: 3px solid #FFC21A !important;
+          background: #FFFFFF;
+        }
+        .employee-search-icon {
+          background: #FFFFFF !important;
+          color: #8A6500;
+          border: 1px solid #E5E5E5 !important;
+          border-right: 0 !important;
+          border-radius: 10px 0 0 10px !important;
+        }
+        .employee-search-input {
+          border: 1px solid #E5E5E5 !important;
+          border-left: 0 !important;
+          border-radius: 0 10px 10px 0 !important;
+          box-shadow: none !important;
+        }
+        .employee-search-input:focus,
+        .employee-filter-select:focus {
+          border-color: #FFC21A !important;
+          box-shadow: 0 0 0 3px rgba(255, 194, 26, 0.22) !important;
+          outline: none;
+        }
+        .employee-filter-select {
+          border-color: #E5E5E5;
+          border-radius: 10px;
+          box-shadow: none;
+        }
+        .employee-theme-card .card-body {
+          background-color: #FFFFFF;
+        }
+      `}</style>
       {/* Page header */}
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
@@ -310,7 +344,7 @@ function AdminEmployees() {
 
           <p
             className="mb-0"
-            style={{ color: "#7c8b8e", fontSize: "13px" }}
+            style={{ color: "#666666", fontSize: "13px" }}
           >
             Manage employees who help review and moderate NearSpot.
           </p>
@@ -336,9 +370,9 @@ function AdminEmployees() {
               setShowAddModal(true);
             }}
             style={{
-              backgroundColor: "#20d9ae",
-              borderColor: "#20d9ae",
-              color: "#06352b",
+              backgroundColor: "#FFC21A",
+              borderColor: "#FFC21A",
+              color: "#292929",
               fontSize: "12px",
               fontWeight: 600,
             }}
@@ -385,31 +419,31 @@ function AdminEmployees() {
           {
             label: "TOTAL EMPLOYEES",
             value: statistics.total,
-            color: "#1d2b2e",
+            color: "#292929",
           },
           {
             label: "ACTIVE",
             value: statistics.active,
-            color: "#16866d",
+            color: "#8A6500",
           },
           {
             label: "INACTIVE",
             value: statistics.inactive,
-            color: "#b42335",
+            color: "#B42318",
           },
           {
             label: "PENDING INVITES",
             value: "—",
-            color: "#c78318",
+            color: "#A87400",
           },
         ].map((item) => (
           <div className="col-12 col-sm-6 col-xl-3" key={item.label}>
-            <div className="card border-0 shadow-sm rounded-4 h-100">
+            <div className="card shadow-sm rounded-4 h-100 employee-theme-card">
               <div className="card-body p-4">
                 <div
                   className="mb-2"
                   style={{
-                    color: "#7c8b8e",
+                    color: "#666666",
                     fontSize: "10px",
                     fontWeight: 600,
                   }}
@@ -430,18 +464,18 @@ function AdminEmployees() {
       </div>
 
       {/* Search and filters */}
-      <div className="card border-0 shadow-sm rounded-4 mb-3">
+      <div className="card shadow-sm rounded-4 mb-3 employee-theme-card">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
             <div className="col-12 col-lg-7">
               <div className="input-group">
-                <span className="input-group-text bg-white border-end-0">
+                <span className="input-group-text employee-search-icon">
                   ⌕
                 </span>
 
                 <input
                   type="search"
-                  className="form-control border-start-0"
+                  className="form-control employee-search-input"
                   placeholder="Search employees by name or email..."
                   aria-label="Search employees"
                   value={searchTerm}
@@ -454,7 +488,7 @@ function AdminEmployees() {
 
             <div className="col-12 col-sm-6 col-lg-5">
               <select
-                className="form-select"
+                className="form-select employee-filter-select"
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(event.target.value)
@@ -471,20 +505,20 @@ function AdminEmployees() {
       </div>
 
       {/* Employee table */}
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+      <div className="card shadow-sm rounded-4 overflow-hidden employee-theme-card">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom d-flex flex-column flex-sm-row justify-content-between gap-2">
             <div>
               <h5
                 className="fw-semibold mb-1"
-                style={{ color: "#1d2b2e", fontSize: "16px" }}
+                style={{ color: "#292929", fontSize: "16px" }}
               >
                 Employees
               </h5>
 
               <p
                 className="mb-0"
-                style={{ color: "#8a989a", fontSize: "12px" }}
+                style={{ color: "#777777", fontSize: "12px" }}
               >
                 Manage employee accounts and access status.
               </p>
@@ -492,7 +526,7 @@ function AdminEmployees() {
 
             <div
               className="align-self-sm-center"
-              style={{ color: "#7c8b8e", fontSize: "12px" }}
+              style={{ color: "#666666", fontSize: "12px" }}
             >
               {loading
                 ? "Loading..."
@@ -502,7 +536,7 @@ function AdminEmployees() {
 
           <div className="table-responsive">
             <table className="table align-middle mb-0">
-              <thead style={{ backgroundColor: "#fafcfb" }}>
+              <thead style={{ backgroundColor: "#FFF9E8" }}>
                 <tr>
                   <th className="px-3 px-md-4 py-3" style={labelStyle}>
                     EMPLOYEE
@@ -531,7 +565,7 @@ function AdminEmployees() {
                     <td
                       colSpan="5"
                       className="text-center py-5"
-                      style={{ color: "#8a989a", fontSize: "12px" }}
+                      style={{ color: "#777777", fontSize: "12px" }}
                     >
                       Loading employee records...
                     </td>
@@ -541,7 +575,7 @@ function AdminEmployees() {
                     <td
                       colSpan="5"
                       className="text-center py-5"
-                      style={{ color: "#9aa6a8", fontSize: "12px" }}
+                      style={{ color: "#777777", fontSize: "12px" }}
                     >
                       {error
                         ? "Could not load employees. Check the error above."
@@ -565,8 +599,8 @@ function AdminEmployees() {
                               style={{
                                 width: "38px",
                                 height: "38px",
-                                color: "#087f68",
-                                backgroundColor: "#e8f8f3",
+                                color: "#8A6500",
+                                backgroundColor: "#FFF5D6",
                                 fontSize: "13px",
                               }}
                             >
@@ -579,7 +613,7 @@ function AdminEmployees() {
                               <div
                                 className="fw-semibold text-break"
                                 style={{
-                                  color: "#26373a",
+                                  color: "#292929",
                                   fontSize: "12px",
                                 }}
                               >
@@ -589,7 +623,7 @@ function AdminEmployees() {
                               <div
                                 className="text-break"
                                 style={{
-                                  color: "#899597",
+                                  color: "#777777",
                                   fontSize: "11px",
                                 }}
                               >
@@ -601,7 +635,7 @@ function AdminEmployees() {
 
                         <td
                           style={{
-                            color: "#536366",
+                            color: "#555555",
                             fontSize: "12px",
                             whiteSpace: "nowrap",
                           }}
@@ -616,15 +650,15 @@ function AdminEmployees() {
                               fontSize: "10px",
                               fontWeight: 600,
                               color: active
-                                ? "#16866d"
+                                ? "#8A6500"
                                 : status === "INACTIVE"
                                   ? "#b42335"
                                   : "#7c6a30",
                               backgroundColor: active
-                                ? "#e8f8f3"
+                                ? "#FFF5D6"
                                 : status === "INACTIVE"
                                   ? "#fff0f0"
-                                  : "#fff7e5",
+                                  : "#FFF5D6",
                             }}
                           >
                             {status}
@@ -633,7 +667,7 @@ function AdminEmployees() {
 
                         <td
                           style={{
-                            color: "#7c8b8e",
+                            color: "#666666",
                             fontSize: "11px",
                             whiteSpace: "nowrap",
                           }}
@@ -672,11 +706,11 @@ function AdminEmployees() {
           </div>
 
           <div className="px-3 px-md-4 py-3 border-top d-flex justify-content-between gap-2">
-            <span style={{ color: "#8a989a", fontSize: "11px" }}>
+            <span style={{ color: "#777777", fontSize: "11px" }}>
               Showing {filteredEmployees.length} of {employees.length} employees
             </span>
 
-            <span style={{ color: "#8a989a", fontSize: "11px" }}>
+            <span style={{ color: "#777777", fontSize: "11px" }}>
               {statistics.active} active
             </span>
           </div>
@@ -708,14 +742,14 @@ function AdminEmployees() {
                     <h5
                       id="add-employee-title"
                       className="fw-bold mb-1"
-                      style={{ color: "#1d2b2e" }}
+                      style={{ color: "#292929" }}
                     >
                       Add Employee
                     </h5>
 
                     <p
                       className="mb-0"
-                      style={{ color: "#7c8b8e", fontSize: "12px" }}
+                      style={{ color: "#666666", fontSize: "12px" }}
                     >
                       Create a new NearSpot employee account.
                     </p>
@@ -850,9 +884,9 @@ function AdminEmployees() {
                     className="btn rounded-3 px-3"
                     disabled={submitting}
                     style={{
-                      backgroundColor: "#20d9ae",
-                      borderColor: "#20d9ae",
-                      color: "#06352b",
+                      backgroundColor: "#FFC21A",
+                      borderColor: "#FFC21A",
+                      color: "#292929",
                       fontSize: "12px",
                       fontWeight: 600,
                     }}
@@ -888,7 +922,7 @@ function AdminEmployees() {
               <h5
                 id="employee-status-title"
                 className="fw-bold mb-2"
-                style={{ color: "#1d2b2e" }}
+                style={{ color: "#292929" }}
               >
                 {selectedEmployee.is_active
                   ? "Deactivate employee?"

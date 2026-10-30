@@ -107,14 +107,16 @@ function Login() {
           width: 54px;
           height: 54px;
           flex-shrink: 0;
-          border-radius: 17px;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #20cfa7;
-          color: #fff;
-          font-size: 24px;
-          font-weight: 800;
+        }
+
+        .nearspot-login-logo img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
         }
 
         .nearspot-login-title {
@@ -203,14 +205,24 @@ function Login() {
           <div className="nearspot-login-card">
             {/* NearSpot branding */}
             <div className="d-flex align-items-center gap-3 mb-4">
-              <div className="nearspot-login-logo" aria-hidden="true">
-                N
+              <div className="nearspot-login-logo">
+                <img
+                  src="/logo.png"
+                  alt="NearSpot logo"
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
               </div>
 
               <div>
-                <div className="fw-bold" style={{ color: "#1d2b2e", fontSize: 18 }}>
+                <div
+                  className="fw-bold"
+                  style={{ color: "#1d2b2e", fontSize: 18 }}
+                >
                   NearSpot
                 </div>
+
                 <div style={{ color: "#7c8b8e", fontSize: 12 }}>
                   Discover hidden places
                 </div>
@@ -221,6 +233,7 @@ function Login() {
               <h1 className="nearspot-login-title mb-2">
                 Welcome back
               </h1>
+
               <p className="nearspot-login-subtitle mb-0">
                 Sign in to continue exploring NearSpot.
               </p>
@@ -232,14 +245,20 @@ function Login() {
                 role="alert"
                 aria-live="polite"
               >
-                <i className="bi bi-exclamation-circle me-2" aria-hidden="true" />
+                <i
+                  className="bi bi-exclamation-circle me-2"
+                  aria-hidden="true"
+                />
                 {error}
               </div>
             )}
 
             <form onSubmit={handleSubmit}>
               <div className="mb-3">
-                <label htmlFor="login-page-email" className="nearspot-login-label d-block mb-2">
+                <label
+                  htmlFor="login-page-email"
+                  className="nearspot-login-label d-block mb-2"
+                >
                   Email address
                 </label>
 
@@ -257,7 +276,10 @@ function Login() {
               </div>
 
               <div className="mb-3">
-                <label htmlFor="login-page-password" className="nearspot-login-label d-block mb-2">
+                <label
+                  htmlFor="login-page-password"
+                  className="nearspot-login-label d-block mb-2"
+                >
                   Password
                 </label>
 
@@ -281,7 +303,9 @@ function Login() {
                     type="checkbox"
                     className="form-check-input"
                     checked={rememberMe}
-                    onChange={(event) => setRememberMe(event.target.checked)}
+                    onChange={(event) =>
+                      setRememberMe(event.target.checked)
+                    }
                     disabled={loading}
                     style={{ accentColor: "#087f68" }}
                   />
@@ -295,7 +319,10 @@ function Login() {
                   </label>
                 </div>
 
-                <a href="/forgot-password" className="nearspot-login-link">
+                <a
+                  href="/forgot-password"
+                  className="nearspot-login-link"
+                >
                   Forgot password?
                 </a>
               </div>
@@ -326,7 +353,10 @@ function Login() {
                 className="btn btn-link p-0 nearspot-login-link"
                 onClick={() => navigate("/")}
               >
-                <i className="bi bi-arrow-left me-2" aria-hidden="true" />
+                <i
+                  className="bi bi-arrow-left me-2"
+                  aria-hidden="true"
+                />
                 Back to map
               </button>
             </div>

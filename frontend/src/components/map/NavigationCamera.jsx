@@ -1,14 +1,18 @@
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
+import L from "leaflet";
 
 const NAVIGATION_ZOOM = 18;
 const CAMERA_ANIMATION_SECONDS = 0.5;
 const GPS_ACCURACY_LIMIT_METERS = 100;
 
-// Position the arrow at approximately 65%
-// of the map's height, leaving more road visible ahead.
+// Keep the user's arrow slightly below the center of the screen.
 const ARROW_VERTICAL_POSITION = 0.65;
+
+// ============================================================
+// VALIDATE GPS POSITION
+// ============================================================
 
 function getValidPosition(location) {
   if (!location) return null;
@@ -25,20 +29,64 @@ function getValidPosition(location) {
     return null;
   }
 
-  const accuracy = Number(location.accuracy);
+  if (location.accuracy != null) {
+    const accuracy = Number(location.accuracy);
 
-  if (
-    location.accuracy != null &&
-    (
+    if (
       !Number.isFinite(accuracy) ||
+      accuracy <= 0 ||
       accuracy > GPS_ACCURACY_LIMIT_METERS
-    )
-  ) {
-    return null;
+    ) {
+      return null;
+    }
   }
 
   return [latitude, longitude];
 }
+
+// ============================================================
+// SAFELY CHECK MAP AVAILABILITY
+// ============================================================
+
+function isMapUsable(map) {
+  try {
+    if (!map || !map.getContainer) {
+      return false;
+    }
+
+    const container = map.getContainer();
+
+    if (!container || !container.isConnected) {
+      return false;
+    }
+
+    const pane = map.getPane("mapPane");
+
+    if (!pane || !pane.isConnected) {
+      return false;
+    }
+
+    const position = pane._leaflet_pos;
+
+    if (
+      !position ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      return false;
+    }
+
+    const size = map.getSize();
+
+    return size.x > 0 && size.y > 0;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================
+// NAVIGATION CAMERA
+// ============================================================
 
 export default function NavigationCamera({
   location,
@@ -51,84 +99,163 @@ export default function NavigationCamera({
   const followingRef = useRef(true);
   const wasEnabledRef = useRef(false);
   const lastPositionRef = useRef(null);
+
   const locationRef = useRef(location);
   const enabledRef = useRef(enabled);
 
   const programmaticMoveRef = useRef(false);
   const moveTimeoutRef = useRef(null);
+  const mountedRef = useRef(false);
 
   locationRef.current = location;
   enabledRef.current = enabled;
 
-  function updateFollowing(value) {
-    if (followingRef.current === value) return;
+  // ==========================================================
+  // MOUNT STATUS
+  // ==========================================================
 
-    followingRef.current = value;
-    onFollowingChange?.(value);
-  }
+  useEffect(() => {
+    mountedRef.current = true;
 
-  function clearCameraTimeout() {
-    if (moveTimeoutRef.current) {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // ==========================================================
+  // FOLLOWING STATE
+  // ==========================================================
+
+  const updateFollowing = useCallback(
+    (value) => {
+      if (followingRef.current === value) return;
+
+      followingRef.current = value;
+      onFollowingChange?.(value);
+    },
+    [onFollowingChange]
+  );
+
+  // ==========================================================
+  // CLEAR CAMERA TIMEOUT
+  // ==========================================================
+
+  const clearCameraTimeout = useCallback(() => {
+    if (moveTimeoutRef.current !== null) {
       clearTimeout(moveTimeoutRef.current);
       moveTimeoutRef.current = null;
     }
-  }
+  }, []);
 
-  function moveCamera(position, animate = true) {
-    if (!position) return;
+  // ==========================================================
+  // SAFELY STOP CAMERA ANIMATION
+  // ==========================================================
 
-    clearCameraTimeout();
-
-    const [latitude, longitude] = position;
-
-    // Leaflet's project/unproject methods let us offset
-    // the camera without moving the actual GPS marker.
-    const targetZoom = NAVIGATION_ZOOM;
-
-    const mapSize = map.getSize();
-
-    const projected = map.project(
-      L.latLng(latitude, longitude),
-      targetZoom
-    );
-
-    const verticalOffset =
-      mapSize.y * (ARROW_VERTICAL_POSITION - 0.5);
-
-    const cameraCenter = map.unproject(
-      projected.add([0, -verticalOffset]),
-      targetZoom
-    );
-
-    programmaticMoveRef.current = true;
-
-    map.stop();
-
-    if (animate) {
-      map.flyTo(cameraCenter, targetZoom, {
-        animate: true,
-        duration: CAMERA_ANIMATION_SECONDS,
-      });
-    } else {
-      map.setView(cameraCenter, targetZoom, {
-        animate: false,
-      });
+  const safelyStopCamera = useCallback(() => {
+    if (!mountedRef.current || !isMapUsable(map)) {
+      return;
     }
 
-    moveTimeoutRef.current = setTimeout(() => {
-      programmaticMoveRef.current = false;
-    }, CAMERA_ANIMATION_SECONDS * 1000 + 150);
-  }
+    try {
+      map.stop();
+    } catch (error) {
+      console.warn(
+        "[NavigationCamera] Could not stop map animation:",
+        error
+      );
+    }
+  }, [map]);
 
-  // Detect user interactions.
+  // ==========================================================
+  // MOVE CAMERA
+  // ==========================================================
+
+  const moveCamera = useCallback(
+    (position, animate = true) => {
+      if (
+        !mountedRef.current ||
+        !position ||
+        !isMapUsable(map)
+      ) {
+        return;
+      }
+
+      clearCameraTimeout();
+
+      try {
+        const [latitude, longitude] = position;
+        const targetZoom = NAVIGATION_ZOOM;
+        const mapSize = map.getSize();
+
+        const projected = map.project(
+          L.latLng(latitude, longitude),
+          targetZoom
+        );
+
+        // Position the GPS marker slightly below screen center.
+        const verticalOffset =
+          mapSize.y * (ARROW_VERTICAL_POSITION - 0.5);
+
+        const cameraCenter = map.unproject(
+          projected.add([0, -verticalOffset]),
+          targetZoom
+        );
+
+        programmaticMoveRef.current = true;
+
+        // Stop any previous animation only while the map is usable.
+        safelyStopCamera();
+
+        // Recheck in case the map was detached during the operation.
+        if (
+          !mountedRef.current ||
+          !isMapUsable(map)
+        ) {
+          programmaticMoveRef.current = false;
+          return;
+        }
+
+        if (animate) {
+          map.flyTo(cameraCenter, targetZoom, {
+            animate: true,
+            duration: CAMERA_ANIMATION_SECONDS,
+          });
+        } else {
+          map.setView(cameraCenter, targetZoom, {
+            animate: false,
+          });
+        }
+
+        moveTimeoutRef.current = setTimeout(() => {
+          programmaticMoveRef.current = false;
+          moveTimeoutRef.current = null;
+        }, animate ? CAMERA_ANIMATION_SECONDS * 1000 + 200 : 0);
+      } catch (error) {
+        programmaticMoveRef.current = false;
+
+        console.warn(
+          "[NavigationCamera] Camera movement failed:",
+          error
+        );
+      }
+    },
+    [map, clearCameraTimeout, safelyStopCamera]
+  );
+
+  // ==========================================================
+  // PAUSE FOLLOWING WHEN USER MOVES MAP
+  // ==========================================================
+
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !isMapUsable(map)) {
+      return undefined;
+    }
 
     function pauseFollowing() {
       updateFollowing(false);
       clearCameraTimeout();
       programmaticMoveRef.current = false;
-      map.stop();
+      safelyStopCamera();
     }
 
     function handleZoomStart() {
@@ -146,9 +273,18 @@ export default function NavigationCamera({
       map.off("boxzoomstart", pauseFollowing);
       map.off("zoomstart", handleZoomStart);
     };
-  }, [map, enabled, onFollowingChange]);
+  }, [
+    map,
+    enabled,
+    updateFollowing,
+    clearCameraTimeout,
+    safelyStopCamera,
+  ]);
 
-  // Reset following when navigation starts or stops.
+  // ==========================================================
+  // RESET WHEN NAVIGATION STARTS OR STOPS
+  // ==========================================================
+
   useEffect(() => {
     if (enabled && !wasEnabledRef.current) {
       followingRef.current = true;
@@ -159,20 +295,35 @@ export default function NavigationCamera({
     if (!enabled) {
       followingRef.current = true;
       lastPositionRef.current = null;
+
       clearCameraTimeout();
       programmaticMoveRef.current = false;
     }
 
     wasEnabledRef.current = enabled;
-  }, [enabled, onFollowingChange]);
+  }, [
+    enabled,
+    onFollowingChange,
+    clearCameraTimeout,
+  ]);
 
-  // Expose recenter to NearSpotMap.
+  // ==========================================================
+  // EXPOSE RECENTER ACTION
+  // ==========================================================
+
   useEffect(() => {
-    if (!cameraActionsRef) return;
+    if (!cameraActionsRef) {
+      return undefined;
+    }
 
     cameraActionsRef.current = {
       recenter() {
-        if (!enabledRef.current) return;
+        if (
+          !enabledRef.current ||
+          !mountedRef.current
+        ) {
+          return;
+        }
 
         const position = getValidPosition(
           locationRef.current
@@ -182,19 +333,33 @@ export default function NavigationCamera({
 
         updateFollowing(true);
         lastPositionRef.current = position;
-
         moveCamera(position, true);
       },
     };
 
     return () => {
-      cameraActionsRef.current = null;
+      if (cameraActionsRef.current) {
+        cameraActionsRef.current = null;
+      }
     };
-  }, [map, cameraActionsRef, onFollowingChange]);
+  }, [
+    cameraActionsRef,
+    updateFollowing,
+    moveCamera,
+  ]);
 
-  // Follow incoming GPS updates.
+  // ==========================================================
+  // FOLLOW VALID GPS POSITIONS
+  // ==========================================================
+
   useEffect(() => {
-    if (!enabled || !followingRef.current) return;
+    if (
+      !enabled ||
+      !followingRef.current ||
+      !mountedRef.current
+    ) {
+      return;
+    }
 
     const position = getValidPosition(location);
 
@@ -202,6 +367,7 @@ export default function NavigationCamera({
 
     const previous = lastPositionRef.current;
 
+    // Do not restart animation for identical coordinates.
     if (
       previous &&
       previous[0] === position[0] &&
@@ -211,22 +377,28 @@ export default function NavigationCamera({
     }
 
     lastPositionRef.current = position;
-
     moveCamera(position, true);
   }, [
-    map,
     enabled,
     location?.latitude,
     location?.longitude,
     location?.accuracy,
+    moveCamera,
   ]);
 
-  // Cleanup when component unmounts.
+  // ==========================================================
+  // CLEANUP
+  // ==========================================================
+
   useEffect(() => {
     return () => {
       clearCameraTimeout();
+
+      // Do not call map.stop() during unmount.
+      // Leaflet may already be removing its map pane.
+      programmaticMoveRef.current = false;
     };
-  }, []);
+  }, [clearCameraTimeout]);
 
   return null;
 }

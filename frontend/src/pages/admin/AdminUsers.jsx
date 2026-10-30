@@ -94,12 +94,12 @@ function getApiError(error, fallback) {
 function StatCard({ title, value, color, description, loading }) {
   return (
     <div className="col-12 col-sm-6 col-xl-3">
-      <div className="card border-0 shadow-sm rounded-4 h-100">
+      <div className="card shadow-sm rounded-4 h-100 users-theme-card">
         <div className="card-body p-4">
           <div
             className="mb-2"
             style={{
-              color: "#7c8b8e",
+              color: "#666666",
               fontSize: "11px",
               fontWeight: 600,
             }}
@@ -120,7 +120,7 @@ function StatCard({ title, value, color, description, loading }) {
           <div
             className="mt-1"
             style={{
-              color: "#9aa6a8",
+              color: "#777777",
               fontSize: "10px",
             }}
           >
@@ -348,13 +348,50 @@ export default function AdminUsers() {
 
   return (
     <AdminLayout>
+      <style>{`
+        .users-theme-card {
+          border: 1px solid #E5E5E5 !important;
+          border-top: 3px solid #FFC21A !important;
+          background: #FFFFFF;
+        }
+        .users-theme-card .card-body {
+          background-color: #FFFFFF;
+        }
+        .users-search-icon {
+          background: #FFFFFF !important;
+          color: #8A6500;
+          border: 1px solid #E5E5E5 !important;
+          border-right: 0 !important;
+          border-radius: 10px 0 0 10px !important;
+        }
+        .users-search-input {
+          border: 1px solid #E5E5E5 !important;
+          border-left: 0 !important;
+          border-radius: 0 10px 10px 0 !important;
+          box-shadow: none !important;
+        }
+        .users-search-input:focus,
+        .users-filter-select:focus {
+          border-color: #FFC21A !important;
+          box-shadow: 0 0 0 3px rgba(255, 194, 26, 0.22) !important;
+          outline: none;
+        }
+        .users-filter-select {
+          border-color: #E5E5E5;
+          border-radius: 10px;
+          box-shadow: none;
+        }
+        .users-theme-card .table thead th {
+          background-color: #FFF9E8;
+        }
+      `}</style>
       {/* PAGE HEADER */}
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1
             className="fw-bold mb-1"
             style={{
-              color: "#1d2b2e",
+              color: "#292929",
               fontSize: "24px",
             }}
           >
@@ -364,7 +401,7 @@ export default function AdminUsers() {
           <p
             className="mb-0"
             style={{
-              color: "#7c8b8e",
+              color: "#666666",
               fontSize: "13px",
             }}
           >
@@ -376,7 +413,7 @@ export default function AdminUsers() {
           type="button"
           className="btn btn-light border rounded-3 px-3"
           style={{
-            color: "#536366",
+            color: "#555555",
             fontSize: "12px",
             fontWeight: 600,
           }}
@@ -423,7 +460,7 @@ export default function AdminUsers() {
         <StatCard
           title="TOTAL USERS"
           value={statistics.total}
-          color="#1d2b2e"
+          color="#292929"
           description="Registered NearSpot users"
           loading={loading}
         />
@@ -431,7 +468,7 @@ export default function AdminUsers() {
         <StatCard
           title="ACTIVE USERS"
           value={statistics.active}
-          color="#16866d"
+          color="#805F00"
           description="Accounts currently active"
           loading={loading}
         />
@@ -439,7 +476,7 @@ export default function AdminUsers() {
         <StatCard
           title="INACTIVE USERS"
           value={statistics.inactive}
-          color="#b42335"
+          color="#B42318"
           description="Accounts currently inactive"
           loading={loading}
         />
@@ -447,25 +484,25 @@ export default function AdminUsers() {
         <StatCard
           title="NEW USERS"
           value={statistics.newUsers}
-          color="#2f6f9f"
+          color="#805B16"
           description="Registered in the last 30 days"
           loading={loading}
         />
       </div>
 
       {/* SEARCH AND FILTERS */}
-      <div className="card border-0 shadow-sm rounded-4 mb-3">
+      <div className="card shadow-sm rounded-4 mb-3 users-theme-card">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
             <div className="col-12 col-lg-7">
               <div className="input-group">
-                <span className="input-group-text bg-white border-end-0">
+                <span className="input-group-text users-search-icon">
                   ⌕
                 </span>
 
                 <input
                   type="text"
-                  className="form-control border-start-0"
+                  className="form-control users-search-input"
                   placeholder="Search users by name or email..."
                   aria-label="Search users"
                   value={search}
@@ -476,7 +513,7 @@ export default function AdminUsers() {
 
             <div className="col-12 col-sm-6 col-lg-5">
               <select
-                className="form-select"
+                className="form-select users-filter-select"
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(event.target.value)
@@ -493,13 +530,13 @@ export default function AdminUsers() {
       </div>
 
       {/* REGISTERED USERS TABLE */}
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+      <div className="card shadow-sm rounded-4 overflow-hidden users-theme-card">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
             <h5
               className="fw-semibold mb-1"
               style={{
-                color: "#1d2b2e",
+                color: "#292929",
                 fontSize: "16px",
               }}
             >
@@ -509,7 +546,7 @@ export default function AdminUsers() {
             <p
               className="mb-0"
               style={{
-                color: "#8a989a",
+                color: "#777777",
                 fontSize: "12px",
               }}
             >
@@ -519,7 +556,7 @@ export default function AdminUsers() {
 
           <div className="table-responsive">
             <table className="table align-middle mb-0">
-              <thead>
+              <thead style={{ backgroundColor: "#FFF9E8" }}>
                 <tr>
                   {[
                     "USER",
@@ -532,7 +569,7 @@ export default function AdminUsers() {
                       key={heading}
                       className="px-3 py-3"
                       style={{
-                        color: "#7c8b8e",
+                        color: "#666666",
                         fontSize: "10px",
                         fontWeight: 700,
                         whiteSpace: "nowrap",
@@ -551,7 +588,7 @@ export default function AdminUsers() {
                       colSpan="5"
                       className="text-center py-5"
                       style={{
-                        color: "#9aa6a8",
+                        color: "#777777",
                         fontSize: "12px",
                       }}
                     >
@@ -564,7 +601,7 @@ export default function AdminUsers() {
                       colSpan="5"
                       className="text-center py-5"
                       style={{
-                        color: "#9aa6a8",
+                        color: "#777777",
                         fontSize: "12px",
                       }}
                     >
@@ -590,7 +627,7 @@ export default function AdminUsers() {
                           <div
                             className="fw-semibold"
                             style={{
-                              color: "#1d2b2e",
+                              color: "#292929",
                               fontSize: "12px",
                             }}
                           >
@@ -600,7 +637,7 @@ export default function AdminUsers() {
                           <div
                             className="mt-1"
                             style={{
-                              color: "#8a989a",
+                              color: "#777777",
                               fontSize: "11px",
                             }}
                           >
@@ -610,7 +647,7 @@ export default function AdminUsers() {
                           <div
                             className="mt-1"
                             style={{
-                              color: "#9aa6a8",
+                              color: "#777777",
                               fontSize: "10px",
                             }}
                           >
@@ -622,7 +659,7 @@ export default function AdminUsers() {
                         <td
                           className="py-3"
                           style={{
-                            color: "#536366",
+                            color: "#555555",
                             fontSize: "12px",
                           }}
                         >
@@ -634,10 +671,10 @@ export default function AdminUsers() {
                           <span
                             className="badge rounded-pill px-3 py-2"
                             style={{
-                              color: active ? "#16866d" : "#b42335",
+                              color: active ? "#805F00" : "#B42318",
                               background: active
-                                ? "#e6f7f1"
-                                : "#fff0f0",
+                                ? "#FFF5D6"
+                                : "#FFF0EF",
                               fontSize: "10px",
                               fontWeight: 600,
                             }}
@@ -650,7 +687,7 @@ export default function AdminUsers() {
                         <td
                           className="py-3"
                           style={{
-                            color: "#7c8b8e",
+                            color: "#666666",
                             fontSize: "12px",
                             whiteSpace: "nowrap",
                           }}
@@ -665,11 +702,11 @@ export default function AdminUsers() {
                             className="btn btn-sm rounded-3"
                             style={{
                               color: active
-                                ? "#b42335"
-                                : "#16866d",
+                                ? "#B42318"
+                                : "#805F00",
                               background: active
-                                ? "#fff0f0"
-                                : "#e6f7f1",
+                                ? "#FFF0EF"
+                                : "#FFF5D6",
                               fontSize: "11px",
                               fontWeight: 600,
                               whiteSpace: "nowrap",
@@ -706,7 +743,7 @@ export default function AdminUsers() {
             <div
               className="d-flex flex-column flex-sm-row justify-content-between gap-2 px-3 px-md-4 py-3 border-top"
               style={{
-                color: "#8a989a",
+                color: "#777777",
                 fontSize: "11px",
               }}
             >
@@ -758,11 +795,11 @@ export default function AdminUsers() {
                   width: "52px",
                   height: "52px",
                   backgroundColor: isUserActive(selectedUser)
-                    ? "#fff0f0"
-                    : "#e6f7f1",
+                    ? "#FFF0EF"
+                    : "#FFF5D6",
                   color: isUserActive(selectedUser)
-                    ? "#b42335"
-                    : "#16866d",
+                    ? "#B42318"
+                    : "#805F00",
                 }}
               >
                 <span
@@ -779,7 +816,7 @@ export default function AdminUsers() {
                 id="account-status-title"
                 className="fw-bold mb-2"
                 style={{
-                  color: "#1d2b2e",
+                  color: "#292929",
                   fontSize: "20px",
                 }}
               >
@@ -791,7 +828,7 @@ export default function AdminUsers() {
               <p
                 className="mb-3"
                 style={{
-                  color: "#6b7a7d",
+                  color: "#666666",
                   fontSize: "13px",
                   lineHeight: 1.7,
                 }}
@@ -803,7 +840,7 @@ export default function AdminUsers() {
                     : "activate"}
                 </strong>{" "}
                 the account for{" "}
-                <strong style={{ color: "#1d2b2e" }}>
+                <strong style={{ color: "#292929" }}>
                   {getUserName(selectedUser)}
                 </strong>
                 ?
@@ -813,14 +850,14 @@ export default function AdminUsers() {
               <div
                 className="rounded-3 p-3 mb-4"
                 style={{
-                  backgroundColor: "#f7f9f9",
-                  border: "1px solid #e8eded",
+                  backgroundColor: "#FFF9E8",
+                  border: "1px solid #E5E5E5",
                 }}
               >
                 <div className="d-flex justify-content-between align-items-center gap-3">
                   <span
                     style={{
-                      color: "#7c8b8e",
+                      color: "#666666",
                       fontSize: "12px",
                     }}
                   >
@@ -831,11 +868,11 @@ export default function AdminUsers() {
                     className="badge rounded-pill px-3 py-2"
                     style={{
                       backgroundColor: isUserActive(selectedUser)
-                        ? "#e6f7f1"
-                        : "#fff0f0",
+                        ? "#FFF5D6"
+                        : "#FFF0EF",
                       color: isUserActive(selectedUser)
-                        ? "#16866d"
-                        : "#b42335",
+                        ? "#805F00"
+                        : "#B42318",
                       fontSize: "11px",
                     }}
                   >
@@ -848,7 +885,7 @@ export default function AdminUsers() {
                 <div className="d-flex justify-content-between align-items-center gap-3 mt-3">
                   <span
                     style={{
-                      color: "#7c8b8e",
+                      color: "#666666",
                       fontSize: "12px",
                     }}
                   >
@@ -859,11 +896,11 @@ export default function AdminUsers() {
                     className="badge rounded-pill px-3 py-2"
                     style={{
                       backgroundColor: isUserActive(selectedUser)
-                        ? "#fff0f0"
-                        : "#e6f7f1",
+                        ? "#FFF0EF"
+                        : "#FFF5D6",
                       color: isUserActive(selectedUser)
-                        ? "#b42335"
-                        : "#16866d",
+                        ? "#B42318"
+                        : "#805F00",
                       fontSize: "11px",
                     }}
                   >
@@ -880,9 +917,9 @@ export default function AdminUsers() {
                   type="button"
                   className="btn rounded-3 px-4"
                   style={{
-                    backgroundColor: "#f1f4f4",
-                    color: "#536366",
-                    border: "1px solid #e1e8e8",
+                    backgroundColor: "#F7F7F7",
+                    color: "#555555",
+                    border: "1px solid #E5E5E5",
                     fontSize: "12px",
                     fontWeight: 600,
                   }}
@@ -896,10 +933,8 @@ export default function AdminUsers() {
                   type="button"
                   className="btn rounded-3 px-4"
                   style={{
-                    backgroundColor: isUserActive(selectedUser)
-                      ? "#b42335"
-                      : "#16866d",
-                    color: "#ffffff",
+                    backgroundColor: "#FFC21A",
+                    color: "#292929",
                     border: "none",
                     fontSize: "12px",
                     fontWeight: 600,

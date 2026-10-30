@@ -1,4 +1,6 @@
+
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 function EmployeeSidebar({
   collapsed = false,
@@ -8,13 +10,48 @@ function EmployeeSidebar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+
+  const permissions = user?.permissions ?? [];
+
+  const canViewDashboard = permissions.includes(
+    "dashboard.employee_view"
+  );
+
+  const canViewSpots = permissions.includes(
+    "spots.view_pending"
+  );
+
+  const canViewReports = permissions.includes(
+    "reports.view"
+  );
 
   const navigationItems = [
-    { label: "Dashboard", path: "/employee", icon: "▦" },
-    { label: "Pending Spots", path: "/employee/spots", icon: "⌖" },
-    { label: "Reports", path: "/employee/reports", icon: "⚑" },
-    { label: "Profile", path: "/employee/profile", icon: "♙" },
-  ];
+    {
+      label: "Dashboard",
+      path: "/employee",
+      icon: "▦",
+      visible: canViewDashboard,
+    },
+    {
+      label: "Pending Spots",
+      path: "/employee/spots",
+      icon: "⌖",
+      visible: canViewSpots,
+    },
+    {
+      label: "Reports",
+      path: "/employee/reports",
+      icon: "⚑",
+      visible: canViewReports,
+    },
+    {
+      label: "Profile",
+      path: "/employee/profile",
+      icon: "♙",
+      visible: true,
+    },
+  ].filter((item) => item.visible);
 
   const isActiveRoute = (path) => {
     if (path === "/employee") {
@@ -114,7 +151,11 @@ function EmployeeSidebar({
       </div>
 
       {/* NAVIGATION */}
-      <nav className={`flex-grow-1 ${collapsed && !mobile ? "p-2" : "p-3"}`}>
+      <nav
+        className={`flex-grow-1 ${
+          collapsed && !mobile ? "p-2" : "p-3"
+        }`}
+      >
         {(!collapsed || mobile) && (
           <div
             className="text-uppercase fw-semibold px-3 mb-3 mt-1"
@@ -136,7 +177,11 @@ function EmployeeSidebar({
               <button
                 key={item.path}
                 type="button"
-                title={collapsed && !mobile ? item.label : undefined}
+                title={
+                  collapsed && !mobile
+                    ? item.label
+                    : undefined
+                }
                 aria-label={item.label}
                 aria-current={active ? "page" : undefined}
                 onClick={() => handleNavigation(item.path)}
@@ -144,12 +189,18 @@ function EmployeeSidebar({
                 style={{
                   minHeight: "44px",
                   justifyContent:
-                    collapsed && !mobile ? "center" : "flex-start",
+                    collapsed && !mobile
+                      ? "center"
+                      : "flex-start",
                   gap: collapsed && !mobile ? 0 : "13px",
                   padding:
-                    collapsed && !mobile ? "10px 0" : "10px 13px",
+                    collapsed && !mobile
+                      ? "10px 0"
+                      : "10px 13px",
                   color: active ? "#087f68" : "#637174",
-                  backgroundColor: active ? "#e8f8f3" : "transparent",
+                  backgroundColor: active
+                    ? "#e8f8f3"
+                    : "transparent",
                   fontSize: "13px",
                   fontWeight: active ? 650 : 500,
                   boxShadow: active
@@ -160,12 +211,14 @@ function EmployeeSidebar({
                 }}
                 onMouseEnter={(event) => {
                   if (!active) {
-                    event.currentTarget.style.backgroundColor = "#f5f8f7";
+                    event.currentTarget.style.backgroundColor =
+                      "#f5f8f7";
                   }
                 }}
                 onMouseLeave={(event) => {
                   if (!active) {
-                    event.currentTarget.style.backgroundColor = "transparent";
+                    event.currentTarget.style.backgroundColor =
+                      "transparent";
                   }
                 }}
               >
@@ -202,6 +255,12 @@ function EmployeeSidebar({
               </button>
             );
           })}
+
+          {navigationItems.length === 0 && (
+            <p className="small text-secondary px-3 py-2 mb-0">
+              No workspace features are assigned yet.
+            </p>
+          )}
         </div>
       </nav>
 
@@ -213,16 +272,24 @@ function EmployeeSidebar({
       >
         <button
           type="button"
-          title={collapsed && !mobile ? "Back to NearSpot" : undefined}
+          title={
+            collapsed && !mobile
+              ? "Back to NearSpot"
+              : undefined
+          }
           aria-label="Back to NearSpot"
           className="btn border-0 w-100 d-flex align-items-center rounded-3"
           onClick={() => handleNavigation("/")}
           style={{
             justifyContent:
-              collapsed && !mobile ? "center" : "flex-start",
+              collapsed && !mobile
+                ? "center"
+                : "flex-start",
             gap: collapsed && !mobile ? 0 : "13px",
             padding:
-              collapsed && !mobile ? "10px 0" : "10px 13px",
+              collapsed && !mobile
+                ? "10px 0"
+                : "10px 13px",
             color: "#687779",
             backgroundColor: "transparent",
             fontSize: "12px",

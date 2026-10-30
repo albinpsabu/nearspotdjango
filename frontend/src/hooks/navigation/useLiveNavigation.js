@@ -26,10 +26,7 @@ function getLocationError(error) {
       return "Getting your location timed out. Waiting for another GPS update.";
 
     default:
-      return (
-        error?.message ||
-        "Unable to track your current location."
-      );
+      return error?.message || "Unable to track your current location.";
   }
 }
 
@@ -38,28 +35,14 @@ function getLocationError(error) {
 // ============================================================
 
 export default function useLiveNavigation() {
-  // ----------------------------------------------------------
-  // STATE
-  // ----------------------------------------------------------
-
   const [currentLocation, setCurrentLocation] = useState(null);
-
   const [isTracking, setIsTracking] = useState(false);
-
   const [locationError, setLocationError] = useState("");
 
-  // ----------------------------------------------------------
-  // REFS
-  // ----------------------------------------------------------
-
   const watchIdRef = useRef(null);
-
   const sessionRef = useRef(0);
-
   const trackingRef = useRef(false);
-
   const lastUpdateRef = useRef(null);
-
   const gpsCheckIntervalRef = useRef(null);
 
   // ----------------------------------------------------------
@@ -69,7 +52,6 @@ export default function useLiveNavigation() {
   const clearGpsMonitor = useCallback(() => {
     if (gpsCheckIntervalRef.current !== null) {
       clearInterval(gpsCheckIntervalRef.current);
-
       gpsCheckIntervalRef.current = null;
     }
   }, []);
@@ -82,23 +64,17 @@ export default function useLiveNavigation() {
     sessionRef.current += 1;
 
     if (watchIdRef.current !== null) {
-      navigator.geolocation?.clearWatch(
-        watchIdRef.current
-      );
-
+      navigator.geolocation?.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
 
     clearGpsMonitor();
 
     trackingRef.current = false;
-
     lastUpdateRef.current = null;
 
     setIsTracking(false);
-
     setCurrentLocation(null);
-
     setLocationError("");
   }, [clearGpsMonitor]);
 
@@ -107,38 +83,30 @@ export default function useLiveNavigation() {
   // ----------------------------------------------------------
 
   const startTracking = useCallback(() => {
-    if (trackingRef.current) {
-      return;
-    }
+    if (trackingRef.current) return;
 
     if (!navigator.geolocation) {
       setLocationError(
         "Geolocation is not supported by this browser."
       );
-
       setIsTracking(false);
-
       return;
     }
 
-    // Start a new tracking session.
     const sessionId = ++sessionRef.current;
 
     trackingRef.current = true;
-
-    lastUpdateRef.current = Date.now();
+    lastUpdateRef.current = null;
 
     setCurrentLocation(null);
-
     setIsTracking(true);
-
     setLocationError("");
 
-    // --------------------------------------------------------
-    // GPS SIGNAL MONITOR
-    // --------------------------------------------------------
-
     clearGpsMonitor();
+
+    // --------------------------------------------------------
+    // GPS STALE-LOCATION MONITOR
+    // --------------------------------------------------------
 
     gpsCheckIntervalRef.current = setInterval(() => {
       if (
@@ -150,19 +118,15 @@ export default function useLiveNavigation() {
 
       const lastUpdate = lastUpdateRef.current;
 
-      if (!lastUpdate) {
-        return;
-      }
+      if (
+        lastUpdate === null ||
+        Date.now() - lastUpdate > GPS_STALE_AFTER_MS
+      ) {
+        setCurrentLocation(null);
 
-      const elapsedTime = Date.now() - lastUpdate;
-
-      if (elapsedTime > GPS_STALE_AFTER_MS) {
         setLocationError(
           "GPS signal lost or delayed. Waiting for a new location update."
         );
-
-        // Prevent navigation from using stale coordinates.
-        setCurrentLocation(null);
       }
     }, GPS_CHECK_INTERVAL_MS);
 
@@ -172,12 +136,11 @@ export default function useLiveNavigation() {
 
     try {
       const watchId = navigator.geolocation.watchPosition(
-        // ----------------------------------------------------
-        // GPS SUCCESS
-        // ----------------------------------------------------
-
         (position) => {
-          if (sessionId !== sessionRef.current) {
+          if (
+            sessionId !== sessionRef.current ||
+            !trackingRef.current
+          ) {
             return;
           }
 
@@ -189,98 +152,88 @@ export default function useLiveNavigation() {
             speed,
           } = position.coords;
 
+          const timestamp = Number(position.timestamp);
+          const now = Date.now();
+
+          // Validate coordinates.
           if (
             !Number.isFinite(latitude) ||
             !Number.isFinite(longitude) ||
             Math.abs(latitude) > 90 ||
             Math.abs(longitude) > 180
           ) {
-            setLocationError(
-              "Invalid GPS coordinates received."
-            );
-
+            lastUpdateRef.current = null;
             setCurrentLocation(null);
-
+            setLocationError("Invalid GPS coordinates received.");
             return;
           }
 
+          // Reject inaccurate or invalid GPS readings.
           if (
             !Number.isFinite(accuracy) ||
-            accuracy < 0 ||
+            accuracy <= 0 ||
             accuracy > MAX_ACCEPTABLE_ACCURACY_METERS
           ) {
+            setCurrentLocation(null);
+
             setLocationError(
               "GPS accuracy is currently poor. Waiting for a more accurate location."
             );
-
-            // Keep the last valid position while waiting
-            // for a more accurate GPS update.
             return;
           }
 
-          const timestamp = Number(position.timestamp);
-
-          const now = Date.now();
-
+          // Reject outdated or invalid timestamps.
           if (
             !Number.isFinite(timestamp) ||
+            timestamp <= 0 ||
             timestamp > now ||
             now - timestamp > GPS_STALE_AFTER_MS
           ) {
+            setCurrentLocation(null);
+
             setLocationError(
               "Received an outdated GPS position. Waiting for a fresh update."
             );
-
-            setCurrentLocation(null);
-
             return;
           }
 
-          // A reliable position has been received.
+          // Accept the new GPS position.
           lastUpdateRef.current = now;
 
           setCurrentLocation({
             latitude,
             longitude,
             accuracy,
-            heading,
-            speed,
+            heading:
+              Number.isFinite(heading) ? heading : null,
+            speed:
+              Number.isFinite(speed) ? speed : null,
             timestamp,
           });
 
           setLocationError("");
         },
 
-        // ----------------------------------------------------
-        // GPS ERROR
-        // ----------------------------------------------------
-
         (error) => {
-          if (sessionId !== sessionRef.current) {
+          if (
+            sessionId !== sessionRef.current ||
+            !trackingRef.current
+          ) {
             return;
           }
 
           const message = getLocationError(error);
 
-          // Permission denied: end the tracking session.
           if (error?.code === 1) {
             stopTracking();
-
             setLocationError(message);
-
             return;
           }
 
-          // Temporary GPS errors do not stop watchPosition.
-          // Keep the last valid position temporarily while
-          // waiting for another update. The stale-location
-          // monitor will clear it if updates do not resume.
+          // Do not keep showing an old position after a GPS error.
+          setCurrentLocation(null);
           setLocationError(message);
         },
-
-        // ----------------------------------------------------
-        // GPS OPTIONS
-        // ----------------------------------------------------
 
         {
           enableHighAccuracy: true,
@@ -292,13 +245,12 @@ export default function useLiveNavigation() {
       watchIdRef.current = watchId;
     } catch (error) {
       stopTracking();
-
       setLocationError(getLocationError(error));
     }
   }, [clearGpsMonitor, stopTracking]);
 
   // ----------------------------------------------------------
-  // CLEANUP ON COMPONENT UNMOUNT
+  // CLEANUP ON UNMOUNT
   // ----------------------------------------------------------
 
   useEffect(() => {
@@ -309,12 +261,10 @@ export default function useLiveNavigation() {
         navigator.geolocation?.clearWatch(
           watchIdRef.current
         );
-
         watchIdRef.current = null;
       }
 
       clearGpsMonitor();
-
       trackingRef.current = false;
     };
   }, [clearGpsMonitor]);

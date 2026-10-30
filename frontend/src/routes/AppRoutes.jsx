@@ -1,6 +1,7 @@
-// ============================================================
-// IMPORTS
-// ============================================================
+
+ // ============================================================
+ // IMPORTS
+ // ============================================================
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
@@ -17,6 +18,7 @@ import AdminUsers from "../pages/admin/AdminUsers";
 import AdminEmployees from "../pages/admin/AdminEmployees";
 import AdminCategories from "../pages/admin/AdminCategories";
 import AdminReports from "../pages/admin/AdminReports";
+import EmployeePermissions from "../pages/admin/EmployeePermissions";
 
 // Employee pages
 import EmployeeDashboard from "../pages/employee/Dashboard";
@@ -54,9 +56,7 @@ function AppRoutes() {
             ADMIN ROUTES
         ===================================================== */}
 
-        <Route
-          element={<ProtectedRoute allowedRoles={["ADMIN"]} />}
-        >
+        <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
           <Route path="/admin" element={<AdminDashboard />} />
 
           <Route path="/admin/spots" element={<AdminSpots />} />
@@ -68,21 +68,56 @@ function AppRoutes() {
           <Route path="/admin/categories" element={<AdminCategories />} />
 
           <Route path="/admin/reports" element={<AdminReports />} />
+
+          <Route
+            path="/admin/employee-permissions"
+            element={<EmployeePermissions />}
+          />
         </Route>
 
         {/* ====================================================
             EMPLOYEE ROUTES
         ===================================================== */}
 
-        <Route
-          element={<ProtectedRoute allowedRoles={["EMPLOYEE"]} />}
-        >
-          <Route path="/employee" element={<EmployeeDashboard />} />
+        {/* All employee routes require the EMPLOYEE role */}
+        <Route element={<ProtectedRoute allowedRoles={["EMPLOYEE"]} />}>
+          {/* Dashboard requires dashboard.employee_view */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["EMPLOYEE"]}
+                requiredPermission="dashboard.employee_view"
+              />
+            }
+          >
+            <Route path="/employee" element={<EmployeeDashboard />} />
+          </Route>
 
-          <Route path="/employee/spots" element={<PendingSpots />} />
+          {/* Pending Spots requires spots.view_pending */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["EMPLOYEE"]}
+                requiredPermission="spots.view_pending"
+              />
+            }
+          >
+            <Route path="/employee/spots" element={<PendingSpots />} />
+          </Route>
 
-          <Route path="/employee/reports" element={<Reports />} />
+          {/* Reports requires reports.view */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["EMPLOYEE"]}
+                requiredPermission="reports.view"
+              />
+            }
+          >
+            <Route path="/employee/reports" element={<Reports />} />
+          </Route>
 
+          {/* Profile requires only the EMPLOYEE role */}
           <Route path="/employee/profile" element={<Profile />} />
         </Route>
 
@@ -92,9 +127,7 @@ function AppRoutes() {
             Child pages render inside its Outlet.
         ===================================================== */}
 
-        <Route
-          element={<ProtectedRoute allowedRoles={["USER"]} />}
-        >
+        <Route element={<ProtectedRoute allowedRoles={["USER"]} />}>
           <Route path="/user" element={<UserLayout />}>
             <Route index element={<UserDashboard />} />
 

@@ -1,7 +1,9 @@
+
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../services/api";
 import EmployeeLayout from "../../components/employee/EmployeeLayout";
+import { useAuth } from "../../context/AuthContext";
 
 function StatCard({ title, value, description, accent = "#1d2b2e" }) {
   return (
@@ -98,12 +100,32 @@ function getReportStatusStyle(status) {
 }
 
 function Dashboard() {
+  const { user } = useAuth();
+
+  const permissions = user?.permissions ?? [];
+
+  const canViewDashboard = permissions.includes(
+    "dashboard.employee_view"
+  );
+
+  const canViewSpots = permissions.includes("spots.view_pending");
+
+  const canViewReports = permissions.includes("reports.view");
+
   const [dashboard, setDashboard] = useState(null);
   const [reportsList, setReportsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const fetchDashboard = useCallback(async () => {
+    if (!canViewDashboard) {
+      setDashboard(null);
+      setReportsList([]);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -111,21 +133,23 @@ function Dashboard() {
       const response = await api.get("/spots/employee/dashboard/");
       setDashboard(response.data);
 
-      // Reports are fetched separately so a reports API failure
-      // does not prevent the main dashboard from loading.
-      try {
-        const reportsResponse = await api.get("/spots/reports/");
-        const data = reportsResponse.data;
+      if (canViewReports) {
+        try {
+          const reportsResponse = await api.get("/spots/reports/");
+          const data = reportsResponse.data;
 
-        if (Array.isArray(data)) {
-          setReportsList(data);
-        } else if (Array.isArray(data?.results)) {
-          setReportsList(data.results);
-        } else {
+          if (Array.isArray(data)) {
+            setReportsList(data);
+          } else if (Array.isArray(data?.results)) {
+            setReportsList(data.results);
+          } else {
+            setReportsList([]);
+          }
+        } catch (reportError) {
+          console.error("Unable to load reports:", reportError);
           setReportsList([]);
         }
-      } catch (reportError) {
-        console.error("Unable to load reports:", reportError);
+      } else {
         setReportsList([]);
       }
     } catch (err) {
@@ -137,7 +161,7 @@ function Dashboard() {
         );
       } else if (status === 403) {
         setError(
-          "Access denied. Please log in with an authorized employee account."
+          "Access denied. Your dashboard permission may have changed. Refresh your permissions or contact your administrator."
         );
       } else {
         setError(
@@ -150,7 +174,7 @@ function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canViewDashboard, canViewReports]);
 
   useEffect(() => {
     fetchDashboard();
@@ -169,6 +193,43 @@ function Dashboard() {
         new Date(a.created_at || 0).getTime()
     )
     .slice(0, 5);
+
+  // Dashboard access is independent of spot/report permissions.
+  if (!canViewDashboard) {
+    return (
+      <EmployeeLayout>
+        <div className="card border-0 shadow-sm rounded-4">
+          <div className="card-body text-center py-5 px-4">
+            <div
+              className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+              style={{
+                width: "56px",
+                height: "56px",
+                backgroundColor: "#fff4e5",
+                color: "#b7791f",
+                fontSize: "24px",
+              }}
+            >
+              !
+            </div>
+
+            <h4 className="fw-bold mb-2" style={{ color: "#1d2b2e" }}>
+              Dashboard access unavailable
+            </h4>
+
+            <p
+              className="text-secondary mb-0 mx-auto"
+              style={{ maxWidth: "480px" }}
+            >
+              Your account does not currently have permission to view the
+              employee dashboard. Please contact your administrator if you
+              need access.
+            </p>
+          </div>
+        </div>
+      </EmployeeLayout>
+    );
+  }
 
   return (
     <EmployeeLayout>
@@ -237,300 +298,391 @@ function Dashboard() {
       )}
 
       {/* MAIN STATISTICS */}
-      <div className="row g-3">
-        <StatCard
-          title="TOTAL SPOTS"
-          value={loading && !dashboard ? "..." : formatNumber(spots.total)}
-          description="All hidden spot submissions"
-        />
+      {!error && (
+        <div className="row g-3">
+          {canViewSpots && (
+            <>
+              <StatCard
+                title="TOTAL SPOTS"
+                value={loading && !dashboard ? "..." : formatNumber(spots.total)}
+                description="All hidden spot submissions"
+              />
 
-        <StatCard
-          title="PENDING SPOTS"
-          value={loading && !dashboard ? "..." : formatNumber(spots.pending)}
-          description="Awaiting employee review"
-          accent="#d97706"
-        />
+              <StatCard
+                title="PENDING SPOTS"
+                value={
+                  loading && !dashboard ? "..." : formatNumber(spots.pending)
+                }
+                description="Awaiting employee review"
+                accent="#d97706"
+              />
 
-        <StatCard
-          title="APPROVED SPOTS"
-          value={loading && !dashboard ? "..." : formatNumber(spots.approved)}
-          description="Approved hidden spots"
-          accent="#198754"
-        />
+              <StatCard
+                title="APPROVED SPOTS"
+                value={
+                  loading && !dashboard ? "..." : formatNumber(spots.approved)
+                }
+                description="Approved hidden spots"
+                accent="#198754"
+              />
+            </>
+          )}
 
-        <StatCard
-          title="TOTAL REPORTS"
-          value={loading && !dashboard ? "..." : formatNumber(reports.total)}
-          description="Reports submitted by users"
-          accent="#0d6efd"
-        />
-      </div>
+          {canViewReports && (
+            <StatCard
+              title="TOTAL REPORTS"
+              value={
+                loading && !dashboard ? "..." : formatNumber(reports.total)
+              }
+              description="Reports submitted by users"
+              accent="#0d6efd"
+            />
+          )}
+        </div>
+      )}
 
       {/* SPOT AND REPORT MANAGEMENT */}
-      <div className="row g-3 mt-1">
-        <div className="col-12 col-xl-6">
-          <SectionCard title="Spot Management">
-            <StatisticRow label="Total spots" value={formatNumber(spots.total)} />
-            <StatisticRow
-              label="Pending spots"
-              value={formatNumber(spots.pending)}
-              color="#d97706"
-            />
-            <StatisticRow
-              label="Approved spots"
-              value={formatNumber(spots.approved)}
-              color="#198754"
-            />
-            <StatisticRow
-              label="Rejected spots"
-              value={formatNumber(spots.rejected)}
-              color="#b42335"
-            />
-            <StatisticRow
-              label="Cancelled spots"
-              value={formatNumber(spots.cancelled)}
-            />
-
-            <Link
-              to="/employee/spots"
-              className="btn btn-outline-secondary btn-sm rounded-3 mt-3"
-            >
-              Open pending spot review
-            </Link>
-          </SectionCard>
-        </div>
-
-        <div className="col-12 col-xl-6">
-          <SectionCard title="Report Management">
-            <StatisticRow label="Total reports" value={formatNumber(reports.total)} />
-            <StatisticRow
-              label="Pending reports"
-              value={formatNumber(reports.pending)}
-              color="#d97706"
-            />
-            <StatisticRow
-              label="Reviewed reports"
-              value={formatNumber(reports.reviewed)}
-              color="#0d6efd"
-            />
-            <StatisticRow
-              label="Resolved reports"
-              value={formatNumber(reports.resolved)}
-              color="#198754"
-            />
-
-            <Link
-              to="/employee/reports"
-              className="btn btn-outline-secondary btn-sm rounded-3 mt-3"
-            >
-              Open report management
-            </Link>
-          </SectionCard>
-        </div>
-      </div>
-
-      {/* MY REVIEW ACTIVITY */}
-      <div className="row g-3 mt-1">
-        <div className="col-12">
-          <SectionCard title="My Review Activity">
-            <div className="row g-3">
-              <div className="col-12 col-md-4">
-                <div className="p-3 rounded-3" style={{ backgroundColor: "#f5f7f7" }}>
-                  <div className="small text-secondary mb-2">Total reviews</div>
-                  <div className="fw-bold fs-4">
-                    {formatNumber(reviews.total_reviews)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-12 col-md-4">
-                <div className="p-3 rounded-3" style={{ backgroundColor: "#eaf5ef" }}>
-                  <div className="small text-secondary mb-2">Spots approved by me</div>
-                  <div className="fw-bold fs-4" style={{ color: "#198754" }}>
-                    {formatNumber(reviews.approved)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-12 col-md-4">
-                <div className="p-3 rounded-3" style={{ backgroundColor: "#fdeeee" }}>
-                  <div className="small text-secondary mb-2">Spots rejected by me</div>
-                  <div className="fw-bold fs-4" style={{ color: "#b42335" }}>
-                    {formatNumber(reviews.rejected)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-        </div>
-      </div>
-
-      {/* RECENT REVIEW ACTIVITY */}
-      <div className="row g-3 mt-1">
-        <div className="col-12">
-          <div className="card border-0 shadow-sm rounded-4">
-            <div className="card-body p-4">
-              <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-                <div>
-                  <h5
-                    className="fw-semibold mb-1"
-                    style={{ color: "#1d2b2e", fontSize: "16px" }}
-                  >
-                    Recent Review Activity
-                  </h5>
-                  <p className="mb-0" style={{ color: "#8a989a", fontSize: "12px" }}>
-                    Your five latest reviews.
-                  </p>
-                </div>
+      {!error && (
+        <div className="row g-3 mt-1">
+          {canViewSpots && (
+            <div className="col-12 col-xl-6">
+              <SectionCard title="Spot Management">
+                <StatisticRow
+                  label="Total spots"
+                  value={formatNumber(spots.total)}
+                />
+                <StatisticRow
+                  label="Pending spots"
+                  value={formatNumber(spots.pending)}
+                  color="#d97706"
+                />
+                <StatisticRow
+                  label="Approved spots"
+                  value={formatNumber(spots.approved)}
+                  color="#198754"
+                />
+                <StatisticRow
+                  label="Rejected spots"
+                  value={formatNumber(spots.rejected)}
+                  color="#b42335"
+                />
+                <StatisticRow
+                  label="Cancelled spots"
+                  value={formatNumber(spots.cancelled)}
+                />
 
                 <Link
                   to="/employee/spots"
-                  className="btn btn-outline-secondary btn-sm rounded-3"
+                  className="btn btn-outline-secondary btn-sm rounded-3 mt-3"
                 >
-                  Review pending spots
+                  Open pending spot review
                 </Link>
-              </div>
-
-              {loading && !dashboard ? (
-                <div className="text-center py-4 text-secondary">
-                  Loading recent activity...
-                </div>
-              ) : error ? (
-                <div className="text-secondary small">
-                  Recent activity is unavailable until the dashboard loads.
-                </div>
-              ) : recentActivity.length === 0 ? (
-                <div className="text-center py-4" style={{ color: "#8a989a", fontSize: "13px" }}>
-                  You have no review activity yet.
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table align-middle mb-0">
-                    <thead>
-                      <tr>
-                        <th className="small text-secondary">SPOT</th>
-                        <th className="small text-secondary">ACTION</th>
-                        <th className="small text-secondary">REASON</th>
-                        <th className="small text-secondary">DATE</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {recentActivity.map((activity) => (
-                        <tr key={activity.verification_id}>
-                          <td className="fw-semibold" style={{ color: "#1d2b2e", fontSize: "13px" }}>
-                            {activity.spot_name || `Spot #${activity.spot_id}`}
-                          </td>
-
-                          <td>
-                            <span
-                              className="badge rounded-pill px-3 py-2"
-                              style={getActionStyle(activity.action)}
-                            >
-                              {activity.action}
-                            </span>
-                          </td>
-
-                          <td style={{ color: "#667779", fontSize: "12px", minWidth: "160px" }}>
-                            {activity.reason || "—"}
-                          </td>
-
-                          <td style={{ color: "#8a989a", fontSize: "11px", whiteSpace: "nowrap" }}>
-                            {formatDate(activity.created_at)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              </SectionCard>
             </div>
-          </div>
-        </div>
-      </div>
+          )}
 
-      {/* RECENT REPORTS */}
-      <div className="row g-3 mt-1">
-        <div className="col-12">
-          <div className="card border-0 shadow-sm rounded-4">
-            <div className="card-body p-4">
-              <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-                <div>
-                  <h5
-                    className="fw-semibold mb-1"
-                    style={{ color: "#1d2b2e", fontSize: "16px" }}
-                  >
-                    Recent Reports
-                  </h5>
-                  <p className="mb-0" style={{ color: "#8a989a", fontSize: "12px" }}>
-                    Latest reports submitted by users.
-                  </p>
-                </div>
+          {canViewReports && (
+            <div className="col-12 col-xl-6">
+              <SectionCard title="Report Management">
+                <StatisticRow
+                  label="Total reports"
+                  value={formatNumber(reports.total)}
+                />
+                <StatisticRow
+                  label="Pending reports"
+                  value={formatNumber(reports.pending)}
+                  color="#d97706"
+                />
+                <StatisticRow
+                  label="Reviewed reports"
+                  value={formatNumber(reports.reviewed)}
+                  color="#0d6efd"
+                />
+                <StatisticRow
+                  label="Resolved reports"
+                  value={formatNumber(reports.resolved)}
+                  color="#198754"
+                />
 
                 <Link
                   to="/employee/reports"
-                  className="btn btn-outline-secondary btn-sm rounded-3"
+                  className="btn btn-outline-secondary btn-sm rounded-3 mt-3"
                 >
-                  View all reports
+                  Open report management
                 </Link>
+              </SectionCard>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MY REVIEW ACTIVITY */}
+      {canViewSpots && !error && (
+        <div className="row g-3 mt-1">
+          <div className="col-12">
+            <SectionCard title="My Review Activity">
+              <div className="row g-3">
+                <div className="col-12 col-md-4">
+                  <div
+                    className="p-3 rounded-3"
+                    style={{ backgroundColor: "#f5f7f7" }}
+                  >
+                    <div className="small text-secondary mb-2">
+                      Total reviews
+                    </div>
+                    <div className="fw-bold fs-4">
+                      {formatNumber(reviews.total_reviews)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <div
+                    className="p-3 rounded-3"
+                    style={{ backgroundColor: "#eaf5ef" }}
+                  >
+                    <div className="small text-secondary mb-2">
+                      Spots approved by me
+                    </div>
+                    <div className="fw-bold fs-4" style={{ color: "#198754" }}>
+                      {formatNumber(reviews.approved)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <div
+                    className="p-3 rounded-3"
+                    style={{ backgroundColor: "#fdeeee" }}
+                  >
+                    <div className="small text-secondary mb-2">
+                      Spots rejected by me
+                    </div>
+                    <div className="fw-bold fs-4" style={{ color: "#b42335" }}>
+                      {formatNumber(reviews.rejected)}
+                    </div>
+                  </div>
+                </div>
               </div>
+            </SectionCard>
+          </div>
+        </div>
+      )}
 
-              {loading && !dashboard ? (
-                <div className="text-center py-4 text-secondary">
-                  Loading reports...
+      {/* RECENT REVIEW ACTIVITY */}
+      {canViewSpots && !error && (
+        <div className="row g-3 mt-1">
+          <div className="col-12">
+            <div className="card border-0 shadow-sm rounded-4">
+              <div className="card-body p-4">
+                <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+                  <div>
+                    <h5
+                      className="fw-semibold mb-1"
+                      style={{ color: "#1d2b2e", fontSize: "16px" }}
+                    >
+                      Recent Review Activity
+                    </h5>
+                    <p
+                      className="mb-0"
+                      style={{ color: "#8a989a", fontSize: "12px" }}
+                    >
+                      Your five latest reviews.
+                    </p>
+                  </div>
+
+                  <Link
+                    to="/employee/spots"
+                    className="btn btn-outline-secondary btn-sm rounded-3"
+                  >
+                    Review pending spots
+                  </Link>
                 </div>
-              ) : recentReports.length === 0 ? (
-                <div className="text-center py-4" style={{ color: "#8a989a", fontSize: "13px" }}>
-                  No reports available, or the reports endpoint could not be reached.
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table align-middle mb-0">
-                    <thead>
-                      <tr>
-                        <th className="small text-secondary">SPOT</th>
-                        <th className="small text-secondary">REASON</th>
-                        <th className="small text-secondary">STATUS</th>
-                        <th className="small text-secondary">REPORTED ON</th>
-                      </tr>
-                    </thead>
 
-                    <tbody>
-                      {recentReports.map((report) => (
-                        <tr key={report.id}>
-                          <td className="fw-semibold" style={{ color: "#1d2b2e", fontSize: "13px" }}>
-                            {report.spot_name || `Spot #${report.spot}`}
-                          </td>
-
-                          <td style={{ color: "#667779", fontSize: "12px", minWidth: "180px" }}>
-                            {report.reason || "—"}
-                          </td>
-
-                          <td>
-                            <span
-                              className="badge rounded-pill px-3 py-2"
-                              style={getReportStatusStyle(report.status)}
-                            >
-                              {report.status}
-                            </span>
-                          </td>
-
-                          <td style={{ color: "#8a989a", fontSize: "11px", whiteSpace: "nowrap" }}>
-                            {formatDate(report.created_at)}
-                          </td>
+                {loading && !dashboard ? (
+                  <div className="text-center py-4 text-secondary">
+                    Loading recent activity...
+                  </div>
+                ) : recentActivity.length === 0 ? (
+                  <div
+                    className="text-center py-4"
+                    style={{ color: "#8a989a", fontSize: "13px" }}
+                  >
+                    You have no review activity yet.
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="table align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th className="small text-secondary">SPOT</th>
+                          <th className="small text-secondary">ACTION</th>
+                          <th className="small text-secondary">REASON</th>
+                          <th className="small text-secondary">DATE</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+
+                      <tbody>
+                        {recentActivity.map((activity) => (
+                          <tr key={activity.verification_id}>
+                            <td
+                              className="fw-semibold"
+                              style={{ color: "#1d2b2e", fontSize: "13px" }}
+                            >
+                              {activity.spot_name ||
+                                `Spot #${activity.spot_id}`}
+                            </td>
+
+                            <td>
+                              <span
+                                className="badge rounded-pill px-3 py-2"
+                                style={getActionStyle(activity.action)}
+                              >
+                                {activity.action}
+                              </span>
+                            </td>
+
+                            <td
+                              style={{
+                                color: "#667779",
+                                fontSize: "12px",
+                                minWidth: "160px",
+                              }}
+                            >
+                              {activity.reason || "—"}
+                            </td>
+
+                            <td
+                              style={{
+                                color: "#8a989a",
+                                fontSize: "11px",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {formatDate(activity.created_at)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <p className="small mt-4 mb-0" style={{ color: "#8a989a", fontSize: "11px" }}>
-        Dashboard statistics and employee review activity are calculated by the Django backend.
+      {/* RECENT REPORTS */}
+      {canViewReports && !error && (
+        <div className="row g-3 mt-1">
+          <div className="col-12">
+            <div className="card border-0 shadow-sm rounded-4">
+              <div className="card-body p-4">
+                <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+                  <div>
+                    <h5
+                      className="fw-semibold mb-1"
+                      style={{ color: "#1d2b2e", fontSize: "16px" }}
+                    >
+                      Recent Reports
+                    </h5>
+                    <p
+                      className="mb-0"
+                      style={{ color: "#8a989a", fontSize: "12px" }}
+                    >
+                      Latest reports submitted by users.
+                    </p>
+                  </div>
+
+                  <Link
+                    to="/employee/reports"
+                    className="btn btn-outline-secondary btn-sm rounded-3"
+                  >
+                    View all reports
+                  </Link>
+                </div>
+
+                {loading && !dashboard ? (
+                  <div className="text-center py-4 text-secondary">
+                    Loading reports...
+                  </div>
+                ) : recentReports.length === 0 ? (
+                  <div
+                    className="text-center py-4"
+                    style={{ color: "#8a989a", fontSize: "13px" }}
+                  >
+                    No reports available, or the reports endpoint could not
+                    be reached.
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="table align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th className="small text-secondary">SPOT</th>
+                          <th className="small text-secondary">REASON</th>
+                          <th className="small text-secondary">STATUS</th>
+                          <th className="small text-secondary">REPORTED ON</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {recentReports.map((report) => (
+                          <tr key={report.id}>
+                            <td
+                              className="fw-semibold"
+                              style={{ color: "#1d2b2e", fontSize: "13px" }}
+                            >
+                              {report.spot_name || `Spot #${report.spot}`}
+                            </td>
+
+                            <td
+                              style={{
+                                color: "#667779",
+                                fontSize: "12px",
+                                minWidth: "180px",
+                              }}
+                            >
+                              {report.reason || "—"}
+                            </td>
+
+                            <td>
+                              <span
+                                className="badge rounded-pill px-3 py-2"
+                                style={getReportStatusStyle(report.status)}
+                              >
+                                {report.status}
+                              </span>
+                            </td>
+
+                            <td
+                              style={{
+                                color: "#8a989a",
+                                fontSize: "11px",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {formatDate(report.created_at)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <p
+        className="small mt-4 mb-0"
+        style={{ color: "#8a989a", fontSize: "11px" }}
+      >
+        Dashboard statistics and employee review activity are calculated by
+        the Django backend.
       </p>
     </EmployeeLayout>
   );

@@ -6,7 +6,7 @@ const WS_URL =
   import.meta.env.VITE_WS_URL ||
   "ws://127.0.0.1:8000/ws/spots/";
 
-const API_URL ="http://127.0.0.1:8000/api/spots";
+const API_URL = "http://127.0.0.1:8000/api/spots";
 
 function normalizeNotification(notification) {
   return {
@@ -37,14 +37,11 @@ export default function useNotifications() {
     }
 
     try {
-      const response = await fetch(
-        `${API_URL}/notifications/`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
+      const response = await fetch(`${API_URL}/notifications/`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
 
       if (!response.ok) {
         throw new Error(
@@ -53,13 +50,9 @@ export default function useNotifications() {
       }
 
       const data = await response.json();
-
-      // Django REST Framework pagination may return { results: [...] }.
       const items = Array.isArray(data) ? data : data.results || [];
 
-      setNotifications(
-        items.map(normalizeNotification)
-      );
+      setNotifications(items.map(normalizeNotification));
       setError(null);
     } catch (err) {
       console.error("Failed to load notifications:", err);
@@ -71,40 +64,52 @@ export default function useNotifications() {
     fetchNotifications();
   }, [fetchNotifications]);
 
-  // Maintain the existing real-time WebSocket connection.
+  // Maintain the real-time WebSocket connection.
   useEffect(() => {
     if (!isAuthenticated || !accessToken) {
+      socketRef.current = null;
       setConnectionStatus("disconnected");
       return;
     }
 
-    let socket;
     let cancelled = false;
+    let socket;
 
     try {
       socket = new WebSocket(WS_URL);
       socketRef.current = socket;
+
+      console.log("[WS] Created:", socket.url, socket.readyState);
+
       setConnectionStatus("connecting");
       setError(null);
-    } catch {
+    } catch (err) {
+      console.error("[WS] Could not create socket:", err);
       setConnectionStatus("disconnected");
       setError("Could not create the notification connection.");
       return;
     }
 
     socket.onopen = () => {
-      if (cancelled) return;
+      console.log("[WS] Opened; cancelled:", cancelled);
 
-      socket.send(
-        JSON.stringify({
-          type: "authenticate",
-          token: accessToken,
-        })
-      );
+      if (cancelled || socketRef.current !== socket) return;
+
+      try {
+        socket.send(
+          JSON.stringify({
+            type: "authenticate",
+            token: accessToken,
+          })
+        );
+      } catch (err) {
+        console.error("[WS] Failed to send authentication:", err);
+        setError("Could not authenticate the notification connection.");
+      }
     };
 
     socket.onmessage = (event) => {
-      if (cancelled) return;
+      if (cancelled || socketRef.current !== socket) return;
 
       try {
         const message = JSON.parse(event.data);
@@ -115,6 +120,8 @@ export default function useNotifications() {
 
         if (message.type === "authentication.success") {
           setConnectionStatus("connected");
+          setError(null);
+          console.log("[WS] Authentication successful.");
           return;
         }
 
@@ -129,8 +136,6 @@ export default function useNotifications() {
             is_read: false,
           });
 
-          // The WebSocket event may arrive just before or after
-          // the REST API response. Avoid adding the same notification twice.
           setNotifications((previous) => {
             const alreadyExists = previous.some(
               (item) =>
@@ -138,9 +143,7 @@ export default function useNotifications() {
                 typeof incoming.id === "number"
             );
 
-            if (alreadyExists) {
-              return previous;
-            }
+            if (alreadyExists) return previous;
 
             return [incoming, ...previous];
           });
@@ -150,21 +153,30 @@ export default function useNotifications() {
 
         if (message.type === "authentication.failed") {
           setError("WebSocket authentication failed.");
-          socket.close();
+          socket.close(4001, "Authentication failed");
         }
       } catch (err) {
-        console.error("Invalid WebSocket message:", err);
+        console.error("[WS] Invalid WebSocket message:", err);
       }
     };
 
-    socket.onerror = () => {
-      if (!cancelled) {
+    socket.onerror = (event) => {
+      console.error("[WS] Error event:", event);
+
+      if (!cancelled && socketRef.current === socket) {
         setError("Notification connection encountered an error.");
       }
     };
 
-    socket.onclose = () => {
-      if (!cancelled) {
+    socket.onclose = (event) => {
+      console.log("[WS] Closed:", {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        cancelled,
+      });
+
+      if (!cancelled && socketRef.current === socket) {
         setConnectionStatus("disconnected");
       }
     };
@@ -172,6 +184,8 @@ export default function useNotifications() {
     return () => {
       cancelled = true;
 
+      // Remove handlers before closing so this cleanup doesn't
+      // trigger state updates from an obsolete connection.
       socket.onopen = null;
       socket.onmessage = null;
       socket.onerror = null;
@@ -181,6 +195,10 @@ export default function useNotifications() {
         socket.readyState === WebSocket.CONNECTING ||
         socket.readyState === WebSocket.OPEN
       ) {
+        console.log(
+          "[WS] Cleanup closing socket; readyState:",
+          socket.readyState
+        );
         socket.close();
       }
 
@@ -199,7 +217,6 @@ export default function useNotifications() {
 
       if (!notification || notification.read) return;
 
-      // Optimistic UI update.
       setNotifications((previous) =>
         previous.map((item) =>
           item.id === id ? { ...item, read: true } : item
@@ -256,7 +273,7 @@ export default function useNotifications() {
     }
   }, [accessToken, notifications]);
 
-  // Clear the local list only. This does not delete database records.
+  // Clear the local list only; database records are preserved.
   const clearNotifications = useCallback(() => {
     setNotifications([]);
   }, []);

@@ -35,6 +35,8 @@ const TOP_BAR_HEIGHT = 80;
 const SIDEBAR_COLLAPSED_WIDTH = 76;
 const SIDEBAR_EXPANDED_WIDTH = 320;
 const DIRECTIONS_PANEL_WIDTH = 420;
+const MAX_GPS_ACCURACY_METERS = 100;
+const MAX_GPS_AGE_MS = 20_000;
 
 // ============================================================
 // HELPERS
@@ -62,8 +64,7 @@ function getApiErrorMessage(error) {
 
         return `${field}: ${message}`;
       })
-      .join(" | ") ||
-    "Unable to complete the request."
+      .join(" | ") || "Unable to complete the request."
   );
 }
 
@@ -81,11 +82,7 @@ function loadRecentSearches() {
 }
 
 function validCoordinates(place) {
-  if (
-    !place ||
-    place.latitude == null ||
-    place.longitude == null
-  ) {
+  if (!place || place.latitude == null || place.longitude == null) {
     return null;
   }
 
@@ -104,6 +101,24 @@ function validCoordinates(place) {
   return { latitude, longitude };
 }
 
+function isFreshAccurateGps(location) {
+  if (!location) return false;
+
+  const timestamp = Number(location.timestamp);
+  const accuracy = Number(location.accuracy);
+  const age = Date.now() - timestamp;
+
+  return (
+    validCoordinates(location) !== null &&
+    Number.isFinite(timestamp) &&
+    age >= -5000 &&
+    age <= MAX_GPS_AGE_MS &&
+    Number.isFinite(accuracy) &&
+    accuracy > 0 &&
+    accuracy <= MAX_GPS_ACCURACY_METERS
+  );
+}
+
 // ============================================================
 // APP
 // ============================================================
@@ -111,10 +126,6 @@ function validCoordinates(place) {
 function App() {
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
-
-  // ============================================================
-  // DESTINATION FROM SPOT DETAILS
-  // ============================================================
 
   const navigationDestination =
     routerLocation.state?.navigationDestination ?? null;
@@ -139,18 +150,34 @@ function App() {
     role === "ADMIN"
       ? "/admin"
       : role === "EMPLOYEE"
-      ? "/employee"
-      : "/user";
+        ? "/employee"
+        : "/user";
 
   const profilePath =
     role === "EMPLOYEE"
       ? "/employee/profile"
       : role === "USER"
-      ? "/user/profile"
-      : dashboardPath;
+        ? "/user/profile"
+        : dashboardPath;
 
   // ============================================================
-  // AUTH MODAL
+  // GPS HOOK
+  // ============================================================
+
+  const {
+    location,
+    loading: locationLoading,
+    error: locationError,
+    getCurrentLocation,
+    getFreshLocation,
+    freshLocationLoading,
+    freshLocationError,
+    startWatchingLocation,
+    stopWatchingLocation,
+  } = useLocation();
+
+  // ============================================================
+  // AUTH MODAL AND MESSAGES
   // ============================================================
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -161,13 +188,10 @@ function App() {
   const [actionMessageType, setActionMessageType] =
     useState("success");
 
-  const showMessage = useCallback(
-    (message, type = "success") => {
-      setActionMessage(message);
-      setActionMessageType(type);
-    },
-    []
-  );
+  const showMessage = useCallback((message, type = "success") => {
+    setActionMessage(message);
+    setActionMessageType(type);
+  }, []);
 
   const openAuthModal = useCallback((tab = "login") => {
     setAuthModalTab(tab);
@@ -186,6 +210,8 @@ function App() {
   const [isSelectingSpot, setIsSelectingSpot] = useState(false);
   const [selectedSpotLocation, setSelectedSpotLocation] =
     useState(null);
+  const [spotGpsLocation, setSpotGpsLocation] = useState(null);
+  const [spotGpsLoading, setSpotGpsLoading] = useState(false);
 
   const [showSpotForm, setShowSpotForm] = useState(false);
   const [spotCategories, setSpotCategories] = useState([]);
@@ -196,17 +222,21 @@ function App() {
 
   const startAddSpot = useCallback(() => {
     setSelectedSpotLocation(null);
+    setSpotGpsLocation(null);
     setIsSelectingSpot(true);
     setShowSpotForm(false);
     setActionMessage("");
   }, []);
 
   const cancelSpotSelection = useCallback(() => {
+    if (spotGpsLoading || submittingSpot) return;
+
     setIsSelectingSpot(false);
     setSelectedSpotLocation(null);
+    setSpotGpsLocation(null);
     setShowSpotForm(false);
     setActionMessage("");
-  }, []);
+  }, [spotGpsLoading, submittingSpot]);
 
   const handleAddSpot = () => {
     if (authLoading) return;
@@ -246,8 +276,104 @@ function App() {
     }
   };
 
+  // ============================================================
+  // ACQUIRE GPS SPECIFICALLY FOR HIDDENSPOT SUBMISSION
+  // ============================================================
+
+  const handleGetSpotGpsLocation = useCallback(async () => {
+    if (spotGpsLoading || submittingSpot) return;
+
+    setSpotGpsLoading(true);
+    setSpotGpsLocation(null);
+    setSelectedSpotLocation(null);
+    setActionMessage("");
+
+    try {
+      const freshLocation = await getFreshLocation();
+
+      if (!freshLocation) {
+        showMessage(
+          freshLocationError ||
+            "Unable to obtain a reliable GPS location. Check location permissions and retry.",
+          "warning"
+        );
+        return;
+      }
+
+      if (!isFreshAccurateGps(freshLocation)) {
+        showMessage(
+          "Your GPS reading is inaccurate or outdated. Please obtain a fresh location.",
+          "warning"
+        );
+        return;
+      }
+
+      const coordinates = validCoordinates(freshLocation);
+
+      if (!coordinates) {
+        showMessage(
+          "The GPS provider returned invalid coordinates.",
+          "danger"
+        );
+        return;
+      }
+
+      const verifiedLocation = {
+        ...coordinates,
+        accuracy: Number(freshLocation.accuracy),
+        timestamp: Number(freshLocation.timestamp),
+      };
+
+      setSpotGpsLocation(verifiedLocation);
+      setSelectedSpotLocation(coordinates);
+
+      showMessage(
+        `Current GPS location acquired with approximately ${Math.round(
+          verifiedLocation.accuracy
+        )} m accuracy. Confirm to continue.`,
+        "success"
+      );
+    } catch (error) {
+      console.error("HiddenSpot GPS acquisition failed:", error);
+
+      showMessage(
+        "Unable to obtain your current GPS location. Please retry.",
+        "danger"
+      );
+    } finally {
+      setSpotGpsLoading(false);
+    }
+  }, [
+    spotGpsLoading,
+    submittingSpot,
+    getFreshLocation,
+    freshLocationError,
+    showMessage,
+  ]);
+
+  // ============================================================
+  // CONFIRM GPS LOCATION
+  // ============================================================
+
   const handleConfirmSpotLocation = () => {
-    if (!selectedSpotLocation) return;
+    if (!spotGpsLocation || !selectedSpotLocation) {
+      showMessage(
+        "Obtain your current GPS location before continuing.",
+        "warning"
+      );
+      return;
+    }
+
+    if (!isFreshAccurateGps(spotGpsLocation)) {
+      setSpotGpsLocation(null);
+      setSelectedSpotLocation(null);
+
+      showMessage(
+        "Your GPS reading has expired or is no longer sufficiently accurate. Please retry.",
+        "warning"
+      );
+      return;
+    }
 
     setIsSelectingSpot(false);
     setShowSpotForm(true);
@@ -268,6 +394,7 @@ function App() {
     setShowSpotForm(false);
     setIsSelectingSpot(false);
     setSelectedSpotLocation(null);
+    setSpotGpsLocation(null);
     setActionMessage("");
   };
 
@@ -276,7 +403,7 @@ function App() {
   // ============================================================
 
   useEffect(() => {
-    if (!showSpotForm) return;
+    if (!showSpotForm) return undefined;
 
     let cancelled = false;
 
@@ -328,7 +455,14 @@ function App() {
       return;
     }
 
-    // Require exactly 3 images before creating the spot.
+    if (!isFreshAccurateGps(spotGpsLocation)) {
+      showMessage(
+        "Your verified GPS location has expired. Close this form and obtain your current location again.",
+        "warning"
+      );
+      return;
+    }
+
     if (
       !Array.isArray(formData.images) ||
       formData.images.length !== 3
@@ -340,11 +474,18 @@ function App() {
       return;
     }
 
+    // Always use confirmed GPS coordinates, never form coordinates.
+    const submissionData = {
+      ...formData,
+      latitude: spotGpsLocation.latitude,
+      longitude: spotGpsLocation.longitude,
+    };
+
     setSubmittingSpot(true);
     setActionMessage("");
 
     try {
-      const result = await submitHiddenSpot(formData);
+      const result = await submitHiddenSpot(submissionData);
 
       const {
         spot,
@@ -353,11 +494,10 @@ function App() {
         isComplete,
       } = result;
 
-      // A spot record may already exist even if an image upload fails.
-      // Close the form to prevent accidentally creating a duplicate.
       setShowSpotForm(false);
       setIsSelectingSpot(false);
       setSelectedSpotLocation(null);
+      setSpotGpsLocation(null);
 
       if (
         isComplete === true &&
@@ -365,8 +505,7 @@ function App() {
         uploadedImages.length === 3
       ) {
         showMessage(
-          "HiddenSpot submitted successfully! All 3 images uploaded. " +
-            "Your submission is now pending approval.",
+          "HiddenSpot submitted successfully! All 3 images uploaded. Your submission is now pending approval.",
           "success"
         );
       } else {
@@ -379,9 +518,7 @@ function App() {
           : "";
 
         showMessage(
-          `HiddenSpot #${spot.id} was created, but all 3 images were not uploaded. ` +
-            "The submission is incomplete and must not be considered ready for approval." +
-            failedDetails,
+          `HiddenSpot #${spot?.id ?? "unknown"} was created, but all 3 images were not uploaded. The submission is incomplete and must not be considered ready for approval.${failedDetails}`,
           "warning"
         );
       }
@@ -409,23 +546,11 @@ function App() {
 
     setIsSelectingSpot(false);
     setSelectedSpotLocation(null);
+    setSpotGpsLocation(null);
     setShowSpotForm(false);
 
     navigate("/");
   };
-
-  // ============================================================
-  // GPS LOCATION
-  // ============================================================
-
-  const {
-    location,
-    loading: locationLoading,
-    error: locationError,
-    getCurrentLocation,
-    startWatchingLocation,
-    stopWatchingLocation,
-  } = useLocation();
 
   // ============================================================
   // MAP AND DIRECTIONS STATE
@@ -436,44 +561,75 @@ function App() {
 
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(false);
-
   const [directionsVisible, setDirectionsVisible] =
     useState(false);
+  const [directionsProps, setDirectionsProps] = useState(null);
 
-  const [directionsProps, setDirectionsProps] =
-    useState(null);
-
-  // Shared actions exposed by NearSpotMap.
   const navigationActionsRef = useRef(null);
+  const hasSelectedPlaceRef = useRef(false);
+  const hasAppliedInitialGpsRef = useRef(false);
 
-  // The map clears its route when Directions is closed.
-  // A new non-null route snapshot should always reopen the panel.
+  const directionsDismissedRef = useRef(false);
+  const lastDirectionsRouteRef = useRef(null);
+
   const handleDirectionsChange = useCallback((nextDirections) => {
     setDirectionsProps(nextDirections);
-    setDirectionsVisible(Boolean(nextDirections));
 
-    if (nextDirections) {
+    if (!nextDirections) {
+      setDirectionsVisible(false);
+      lastDirectionsRouteRef.current = null;
+      directionsDismissedRef.current = false;
+      return;
+    }
+
+    const nextRoute = nextDirections.route;
+
+    // Reopen Directions when a new route is created.
+    if (
+      nextRoute &&
+      nextRoute !== lastDirectionsRouteRef.current
+    ) {
+      lastDirectionsRouteRef.current = nextRoute;
+      directionsDismissedRef.current = false;
+      setDirectionsVisible(true);
+    } else if (!directionsDismissedRef.current) {
+      setDirectionsVisible(true);
+    }
+
+    if (!directionsDismissedRef.current) {
       setSidebarCollapsed(true);
     }
   }, []);
 
   const handleCloseDirectionsPanel = useCallback(() => {
-    navigationActionsRef.current?.clearRoute?.();
+    // Hide the panel without clearing the route or stopping GPS.
+    directionsDismissedRef.current = true;
     setDirectionsVisible(false);
-    setDirectionsProps(null);
   }, []);
 
-  const handleSidebarSectionSelect = useCallback(() => {
-    navigationActionsRef.current?.clearRoute?.();
-    setDirectionsVisible(false);
-    setDirectionsProps(null);
-  }, []);
+  const handleSidebarSectionSelect = useCallback(
+    (sectionId) => {
+      if (submittingSpot || spotGpsLoading) {
+        return;
+      }
+
+      // Close the previous HiddenSpot selection panel.
+      setIsSelectingSpot(false);
+      setShowSpotForm(false);
+      setSelectedSpotLocation(null);
+      setSpotGpsLocation(null);
+      setActionMessage("");
+
+      // Hide Directions without clearing the route or stopping navigation.
+      directionsDismissedRef.current = true;
+      setDirectionsVisible(false);
+    },
+    [submittingSpot, spotGpsLoading]
+  );
 
   const handleSidebarToggle = useCallback(() => {
     setSidebarCollapsed((previous) => !previous);
   }, []);
-
-  const hasSelectedPlaceRef = useRef(false);
 
   // ============================================================
   // CENTER MAP ON SELECTED DESTINATION
@@ -499,6 +655,14 @@ function App() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
 
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] =
+    useState(-1);
+
+  const searchDebounceRef = useRef(null);
+  const searchRequestIdRef = useRef(0);
+
   const [recentSearches, setRecentSearches] =
     useState(loadRecentSearches);
 
@@ -512,6 +676,107 @@ function App() {
       console.warn("Unable to save recent searches:", error);
     }
   }, [recentSearches]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    const requestId = ++searchRequestIdRef.current;
+
+    clearTimeout(searchDebounceRef.current);
+
+    if (query.length < 3) {
+      setSearchSuggestions([]);
+      setSuggestionsOpen(false);
+      setSearchLoading(false);
+      return undefined;
+    }
+
+    searchDebounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      setSearchError("");
+
+      try {
+        const params = new URLSearchParams({
+          q: query,
+          limit: "5",
+        });
+
+        const response = await fetch(
+          `https://photon.komoot.io/api/?${params.toString()}`
+        );
+
+        if (!response.ok) {
+          throw new Error("Search service unavailable.");
+        }
+
+        const results = await response.json();
+
+        if (requestId !== searchRequestIdRef.current) return;
+
+        const suggestions = (results.features || [])
+          .map((feature) => {
+            const [longitude, latitude] = feature.geometry.coordinates;
+            const properties = feature.properties || {};
+
+            const address = [
+              properties.street,
+              properties.housenumber,
+              properties.city || properties.locality,
+              properties.state,
+              properties.country,
+            ]
+              .filter(Boolean)
+              .join(", ");
+
+            return {
+              id: `${properties.osm_type || "place"}-${properties.osm_id || `${latitude}-${longitude}`}`,
+              name:
+                properties.name ||
+                properties.street ||
+                properties.city ||
+                "Unnamed place",
+              displayName: address || properties.name || "Unknown address",
+              latitude: Number(latitude),
+              longitude: Number(longitude),
+            };
+          })
+          .filter(
+            (place) =>
+              Number.isFinite(place.latitude) &&
+              Number.isFinite(place.longitude)
+          );
+
+        setSearchSuggestions(suggestions);
+        setSuggestionsOpen(true);
+
+        if (!suggestions.length) {
+          setSearchError("No matching locations found.");
+        }
+      } catch (error) {
+        if (requestId !== searchRequestIdRef.current) return;
+
+        console.error("Location autocomplete failed:", error);
+        setSearchSuggestions([]);
+        setSearchError("Unable to search locations right now.");
+        setSuggestionsOpen(true);
+      } finally {
+        if (requestId === searchRequestIdRef.current) {
+          setSearchLoading(false);
+        }
+      }
+    }, 700);
+
+    return () => {
+      clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (searchQuery.trim().length < 3) {
+      setSearchSuggestions([]);
+      setSuggestionsOpen(false);
+      setActiveSuggestionIndex(-1);
+    }
+  }, [searchQuery]);
 
   const handleRecentSearchRemove = useCallback((searchId) => {
     setRecentSearches((previous) =>
@@ -542,26 +807,33 @@ function App() {
     return () => {
       stopWatchingLocation();
     };
-  }, [getCurrentLocation, startWatchingLocation, stopWatchingLocation]);
+  }, [
+    getCurrentLocation,
+    startWatchingLocation,
+    stopWatchingLocation,
+  ]);
 
   useEffect(() => {
     if (!location || hasSelectedPlaceRef.current) return;
+    if (hasAppliedInitialGpsRef.current) return;
 
-    setMapLocation((current) => current ?? location);
+    const coordinates = validCoordinates(location);
+    if (!coordinates) return;
+
+    hasAppliedInitialGpsRef.current = true;
+    setMapLocation(coordinates);
   }, [location]);
 
   // ============================================================
-  // FALLBACK LOCATION
+  // FALLBACK LOCATION FOR MAP DISPLAY ONLY
   // ============================================================
 
   useEffect(() => {
-    if (mapLocation) return;
+    if (mapLocation) return undefined;
 
     const timeoutId = setTimeout(() => {
       if (!hasSelectedPlaceRef.current) {
-        setMapLocation(
-          (current) => current ?? DEFAULT_LOCATION
-        );
+        setMapLocation((current) => current ?? DEFAULT_LOCATION);
       }
     }, LOCATION_FALLBACK_DELAY);
 
@@ -569,23 +841,53 @@ function App() {
   }, [mapLocation]);
 
   // ============================================================
-  // PLACE SELECTION
+  // PLACE SELECTION — MAP SEARCH ONLY
   // ============================================================
 
-  const handlePlaceSelect = useCallback(
-    (selectedLocation) => {
-      const coordinates = validCoordinates(selectedLocation);
+  const handlePlaceSelect = useCallback((selectedLocation) => {
+    const coordinates = validCoordinates(selectedLocation);
+    if (!coordinates) return;
 
+    hasSelectedPlaceRef.current = true;
+    setMapLocation(coordinates);
+
+    // Map selection never sets HiddenSpot submission coordinates.
+  }, []);
+
+  const handleSuggestionSelect = useCallback(
+    (place) => {
+      const coordinates = validCoordinates(place);
       if (!coordinates) return;
 
-      hasSelectedPlaceRef.current = true;
-      setMapLocation(coordinates);
+      const destination = {
+        ...place,
+        ...coordinates,
+        name: place.name || place.displayName || "Selected destination",
+      };
 
-      if (isSelectingSpot) {
-        setSelectedSpotLocation(coordinates);
-      }
+      setSearchQuery(place.name || place.displayName);
+
+      // Invalidate any pending autocomplete request.
+      searchRequestIdRef.current += 1;
+
+      setSearchSuggestions([]);
+      setSuggestionsOpen(false);
+      setActiveSuggestionIndex(-1);
+      setSearchError("");
+
+      setRecentSearches((previous) =>
+        [
+          destination,
+          ...previous.filter((item) => item.id !== destination.id),
+        ].slice(0, 5)
+      );
+
+      handlePlaceSelect(coordinates);
+
+      // Show the destination pin without requesting directions.
+      navigationActionsRef.current?.selectDestination?.(destination);
     },
-    [isSelectingSpot]
+    [handlePlaceSelect]
   );
 
   // ============================================================
@@ -615,12 +917,8 @@ function App() {
       }
 
       hasSelectedPlaceRef.current = true;
+      hasAppliedInitialGpsRef.current = true;
       setMapLocation(coordinates);
-
-      if (isSelectingSpot) {
-        setSelectedSpotLocation(coordinates);
-      }
-
       setActionMessage("");
     } catch (error) {
       console.error("GPS location failed:", error);
@@ -630,73 +928,46 @@ function App() {
         "danger"
       );
     }
-  }, [getCurrentLocation, isSelectingSpot, showMessage]);
+  }, [getCurrentLocation, showMessage]);
 
   // ============================================================
   // OPENSTREETMAP NOMINATIM SEARCH
   // ============================================================
-    const handleSearch = async (event) => {
+
+  const handleSearch = (event) => {
     event.preventDefault();
 
-    const query = searchQuery.trim();
-    if (!query || searchLoading) return;
+    const selected =
+      searchSuggestions[activeSuggestionIndex] ||
+      searchSuggestions[0];
 
-    setSearchLoading(true);
-    setSearchError("");
+    if (selected) {
+      handleSuggestionSelect(selected);
+    } else if (searchQuery.trim().length >= 3) {
+      setSuggestionsOpen(true);
+    }
+  };
 
-    try {
-      const params = new URLSearchParams({
-        q: query,
-        format: "json",
-        limit: "1",
-      });
+  const handleSearchKeyDown = (event) => {
+    if (event.key === "ArrowDown" && searchSuggestions.length) {
+      event.preventDefault();
+      setSuggestionsOpen(true);
 
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?${params.toString()}`
+      setActiveSuggestionIndex((previous) =>
+        previous >= searchSuggestions.length - 1 ? 0 : previous + 1
       );
+    } else if (
+      event.key === "ArrowUp" &&
+      searchSuggestions.length
+    ) {
+      event.preventDefault();
 
-      if (!response.ok) {
-        throw new Error("Search service unavailable.");
-      }
-
-      const results = await response.json();
-
-      if (!results.length) {
-        setSearchError("No matching location found.");
-        return;
-      }
-
-      const result = results[0];
-
-      const selectedLocation = {
-        latitude: Number(result.lat),
-        longitude: Number(result.lon),
-      };
-
-      handlePlaceSelect(selectedLocation);
-
-      const searchItem = {
-        id: `${result.osm_type}-${result.osm_id}`,
-        name: result.display_name,
-        ...selectedLocation,
-      };
-
-      setRecentSearches((previous) =>
-        [
-          searchItem,
-          ...previous.filter(
-            (item) => item.id !== searchItem.id
-          ),
-        ].slice(0, 5)
+      setActiveSuggestionIndex((previous) =>
+        previous <= 0 ? searchSuggestions.length - 1 : previous - 1
       );
-    } catch (error) {
-      console.error("Location search failed:", error);
-
-      setSearchError(
-        "Unable to search locations right now."
-      );
-    } finally {
-      setSearchLoading(false);
+    } else if (event.key === "Escape") {
+      setSuggestionsOpen(false);
+      setActiveSuggestionIndex(-1);
     }
   };
 
@@ -726,9 +997,7 @@ function App() {
           'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* ======================================================
-          MAP
-      ====================================================== */}
+      {/* MAP */}
 
       <div
         className="position-absolute top-0 start-0 w-100 h-100"
@@ -740,9 +1009,9 @@ function App() {
             userLocation={location}
             spots={nearbySpots}
             onMyLocation={handleMyLocation}
-            isSelectingSpot={isSelectingSpot}
-            selectedSpotLocation={selectedSpotLocation}
-            onSpotLocationSelect={setSelectedSpotLocation}
+            isSelectingSpot={false}
+            selectedSpotLocation={null}
+            onSpotLocationSelect={() => {}}
             navigationDestination={navigationDestination}
             onDirectionsChange={handleDirectionsChange}
             navigationActionsRef={navigationActionsRef}
@@ -754,7 +1023,6 @@ function App() {
                 className="spinner-border text-success"
                 role="status"
               />
-
               <p className="small text-secondary mt-3 mb-0">
                 Getting your location...
               </p>
@@ -763,9 +1031,7 @@ function App() {
         )}
       </div>
 
-      {/* ======================================================
-          CONTINUOUS WHITE TOP BAR
-      ====================================================== */}
+      {/* TOP BAR BACKGROUND */}
 
       <div
         className="position-absolute bg-white border-bottom"
@@ -779,9 +1045,7 @@ function App() {
         }}
       />
 
-      {/* ======================================================
-          NEARSPOT SIDEBAR + DIRECTIONS PANEL
-      ====================================================== */}
+      {/* SIDEBAR AND DIRECTIONS */}
 
       <NearSpotSidebar
         collapsed={sidebarCollapsed}
@@ -805,9 +1069,7 @@ function App() {
         }}
       />
 
-      {/* ======================================================
-          SEARCH BAR
-      ====================================================== */}
+      {/* SEARCH BAR */}
 
       <div
         className="position-absolute"
@@ -832,9 +1094,17 @@ function App() {
             className="form-control border-0 shadow-none bg-transparent"
             placeholder="Search places or locations..."
             value={searchQuery}
-            onChange={(event) =>
-              setSearchQuery(event.target.value)
-            }
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              setActiveSuggestionIndex(-1);
+            }}
+            onKeyDown={handleSearchKeyDown}
+            onFocus={() => {
+              if (searchSuggestions.length) {
+                setSuggestionsOpen(true);
+              }
+            }}
+            autoComplete="off"
             aria-label="Search places or locations"
           />
 
@@ -854,6 +1124,53 @@ function App() {
           )}
         </form>
 
+        {suggestionsOpen && searchSuggestions.length > 0 && (
+          <div
+            className="position-absolute top-100 start-0 end-0 mt-2 bg-white border rounded-4 shadow-lg overflow-hidden"
+            style={{
+              zIndex: 1060,
+              maxHeight: "360px",
+              overflowY: "auto",
+            }}
+            role="listbox"
+            aria-label="Place suggestions"
+          >
+            {searchSuggestions.map((place, index) => (
+              <button
+                key={place.id}
+                type="button"
+                role="option"
+                aria-selected={index === activeSuggestionIndex}
+                className={`w-100 text-start border-0 px-3 py-3 d-flex align-items-start gap-3 ${
+                  index === activeSuggestionIndex
+                    ? "bg-success bg-opacity-10"
+                    : "bg-white"
+                }`}
+                style={{
+                  borderBottom:
+                    index < searchSuggestions.length - 1
+                      ? "1px solid #eee"
+                      : "none",
+                }}
+                onMouseEnter={() => setActiveSuggestionIndex(index)}
+                onClick={() => handleSuggestionSelect(place)}
+              >
+                <i className="bi bi-geo-alt text-success fs-5 mt-1" />
+
+                <span className="d-flex flex-column overflow-hidden">
+                  <strong className="text-dark small">
+                    {place.name}
+                  </strong>
+
+                  <span className="text-secondary small text-wrap">
+                    {place.displayName}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {searchError && (
           <div
             className="alert alert-danger small mt-2 py-2 shadow-sm"
@@ -864,9 +1181,7 @@ function App() {
         )}
       </div>
 
-      {/* ======================================================
-          ACCOUNT AND GPS CONTROLS
-      ====================================================== */}
+      {/* ACCOUNT AND GPS CONTROLS */}
 
       <div
         className="position-absolute top-0 end-0 d-flex align-items-center gap-3"
@@ -875,13 +1190,12 @@ function App() {
           margin: "12px 24px",
         }}
       >
-        {/* GPS BUTTON */}
-        {/* NOTIFICATION BELL */}
         {isAuthenticated && (
           <div className="flex-shrink-0">
             <NotificationBell />
           </div>
         )}
+
         <button
           type="button"
           className="btn bg-white border shadow-sm rounded-4 d-flex align-items-center gap-2 px-3 py-2"
@@ -892,21 +1206,19 @@ function App() {
           <i className="bi bi-crosshair fs-5 text-success" />
 
           <span className="d-none d-xl-flex flex-column align-items-start lh-sm">
-            <span className="small text-secondary">
-              Location
-            </span>
-
+            <span className="small text-secondary">Location</span>
             <strong className="small text-success">
               {locationLoading
                 ? "Finding..."
                 : location
-                ? "ON"
-                : "OFF"}
+                  ? "ON"
+                  : "OFF"}
             </strong>
           </span>
         </button>
 
-        {/* ACCOUNT */}
+        {/* ACCOUNT MENU */}
+
         {authLoading ? (
           <div className="bg-white rounded-circle shadow-sm p-3">
             <span
@@ -919,10 +1231,7 @@ function App() {
             <button
               type="button"
               className="btn bg-white border shadow-sm rounded-circle d-flex align-items-center justify-content-center"
-              style={{
-                width: "48px",
-                height: "48px",
-              }}
+              style={{ width: "48px", height: "48px" }}
               data-bs-toggle="dropdown"
               aria-expanded="false"
               aria-label="Account menu"
@@ -935,7 +1244,6 @@ function App() {
                 <div className="fw-bold small">
                   {user?.name || "My Account"}
                 </div>
-
                 <div className="small text-secondary">
                   {user?.email}
                 </div>
@@ -973,9 +1281,7 @@ function App() {
                     <button
                       type="button"
                       className="dropdown-item rounded-3"
-                      onClick={() =>
-                        navigate("/user/submissions")
-                      }
+                      onClick={() => navigate("/user/submissions")}
                     >
                       <i className="bi bi-pin-map me-2" />
                       My Submissions
@@ -1026,110 +1332,295 @@ function App() {
         )}
       </div>
 
-      {/* ======================================================
-          HIDDENSPOT LOCATION SELECTION PANEL
-      ====================================================== */}
+      {/* HIDDENSPOT GPS CONFIRMATION PANEL */}
 
       {isSelectingSpot && (
         <div
-          className="position-absolute bg-white shadow-lg rounded-4 p-3"
+          className="position-absolute"
           style={{
             zIndex: 1200,
-            bottom: "24px",
-            right: "24px",
-            width: "min(360px, calc(100vw - 48px))",
+            bottom: "clamp(12px, 3vh, 24px)",
+            right: "clamp(12px, 3vw, 24px)",
+            width: "min(430px, calc(100vw - 24px))",
+            maxHeight: "calc(100dvh - 120px)",
+            overflowY: "auto",
           }}
         >
-          <div className="d-flex justify-content-between align-items-start mb-2">
-            <div>
-              <h5 className="fw-bold mb-1">
-                <i className="bi bi-geo-alt-fill text-success me-2" />
-                Select HiddenSpot Location
-              </h5>
+          <div
+            className="card border-0 shadow-lg overflow-hidden"
+            style={{
+              borderRadius: "24px",
+              background: "rgba(255,255,255,0.98)",
+            }}
+          >
+            {/* PANEL HEADER */}
 
-              <p className="small text-secondary mb-0">
-                Search for a location, click anywhere on the map,
-                or use GPS. Drag the marker to fine-tune
-                its position.
+            <div
+              className="p-4 text-white"
+              style={{
+                background:
+                  "linear-gradient(135deg, #087f5b 0%, #099268 55%, #20a879 100%)",
+              }}
+            >
+              <div className="d-flex justify-content-between align-items-start gap-3">
+                <div className="d-flex align-items-center gap-3">
+                  <div
+                    className="d-flex align-items-center justify-content-center rounded-4 flex-shrink-0"
+                    style={{
+                      width: 48,
+                      height: 48,
+                      background: "rgba(255,255,255,0.16)",
+                    }}
+                  >
+                    <i className="bi bi-geo-alt-fill fs-3" />
+                  </div>
+
+                  <div>
+                    <div className="small text-white-50 fw-semibold mb-1">
+                      SHARE WITH THE COMMUNITY
+                    </div>
+                    <h5 className="fw-bold mb-0">
+                      Add a HiddenSpot
+                    </h5>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-sm rounded-circle text-white d-flex align-items-center justify-content-center"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    background: "rgba(255,255,255,0.16)",
+                  }}
+                  aria-label="Cancel HiddenSpot submission"
+                  onClick={cancelSpotSelection}
+                  disabled={spotGpsLoading || submittingSpot}
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+
+              <p className="small text-white-50 mt-3 mb-0">
+                Your HiddenSpot must be registered using your
+                device's current GPS location.
               </p>
             </div>
 
-            <button
-              type="button"
-              className="btn-close ms-2"
-              aria-label="Cancel location selection"
-              onClick={cancelSpotSelection}
-            />
-          </div>
+            <div className="card-body p-4">
+              {/* GPS REQUIREMENTS */}
 
-          {/* GPS LOCATION BUTTON */}
-          <button
-            type="button"
-            className="btn btn-outline-success w-100 mt-3"
-            onClick={handleMyLocation}
-            disabled={locationLoading}
-          >
-            {locationLoading ? (
-              <>
-                <span className="spinner-border spinner-border-sm me-2" />
-                Finding your location...
-              </>
-            ) : (
-              <>
-                <i className="bi bi-crosshair me-2" />
-                Use My Current Location
-              </>
-            )}
-          </button>
+              <div className="d-flex align-items-start gap-3 mb-4">
+                <div
+                  className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    background: "#e6fcf5",
+                    color: "#087f5b",
+                  }}
+                >
+                  <i className="bi bi-shield-check fs-5" />
+                </div>
 
-          {/* SELECTED COORDINATES */}
-          {selectedSpotLocation ? (
-            <div className="bg-light rounded-3 p-3 my-3">
-              <div className="small fw-semibold mb-2">
-                Selected coordinates
+                <div>
+                  <div className="fw-semibold">
+                    Verify your current location
+                  </div>
+                  <div className="small text-secondary mt-1">
+                    For accuracy, your GPS reading must be recent
+                    and within 100 metres. Map search and manually
+                    selected coordinates cannot be used.
+                  </div>
+                </div>
               </div>
 
-              <div className="small">
-                Latitude:{" "}
-                {selectedSpotLocation.latitude.toFixed(6)}
+              {/* GET GPS BUTTON */}
+
+              <button
+                type="button"
+                className="btn btn-success w-100 py-3 rounded-3 fw-semibold"
+                onClick={handleGetSpotGpsLocation}
+                disabled={spotGpsLoading || freshLocationLoading || submittingSpot}
+              >
+                {spotGpsLoading || freshLocationLoading ? (
+                  <>
+                    <span
+                      className="spinner-border spinner-border-sm me-2"
+                      role="status"
+                    />
+                    Getting a fresh GPS reading...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-crosshair me-2" />
+                    Get My Current GPS Location
+                  </>
+                )}
+              </button>
+
+              {/* GPS ERROR */}
+
+              {freshLocationError && !spotGpsLocation && (
+                <div
+                  className="alert alert-warning d-flex align-items-start gap-2 small mt-3 mb-0"
+                  role="alert"
+                >
+                  <i className="bi bi-exclamation-triangle-fill mt-1" />
+                  <span>{freshLocationError}</span>
+                </div>
+              )}
+
+              {/* GPS RESULT */}
+
+              {spotGpsLocation ? (
+                <div
+                  className="rounded-4 p-3 mt-3"
+                  style={{
+                    background: isFreshAccurateGps(spotGpsLocation)
+                      ? "#f0fdf4"
+                      : "#fff7ed",
+                    border: `1px solid ${
+                      isFreshAccurateGps(spotGpsLocation)
+                        ? "#bbf7d0"
+                        : "#fed7aa"
+                    }`,
+                  }}
+                >
+                  <div className="d-flex align-items-center gap-2 mb-3">
+                    <i
+                      className={`bi ${
+                        isFreshAccurateGps(spotGpsLocation)
+                          ? "bi-check-circle-fill text-success"
+                          : "bi-exclamation-circle-fill text-warning"
+                      } fs-5`}
+                    />
+
+                    <div className="fw-semibold">
+                      {isFreshAccurateGps(spotGpsLocation)
+                        ? "GPS location verified"
+                        : "GPS reading expired"}
+                    </div>
+
+                    <span
+                      className={`badge ms-auto ${
+                        isFreshAccurateGps(spotGpsLocation)
+                          ? "text-bg-success"
+                          : "text-bg-warning"
+                      }`}
+                    >
+                      {isFreshAccurateGps(spotGpsLocation)
+                        ? "Verified"
+                        : "Retry"}
+                    </span>
+                  </div>
+
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <div className="small text-secondary mb-1">
+                        Latitude
+                      </div>
+                      <div className="fw-semibold font-monospace small text-break">
+                        {spotGpsLocation.latitude.toFixed(6)}
+                      </div>
+                    </div>
+
+                    <div className="col-6">
+                      <div className="small text-secondary mb-1">
+                        Longitude
+                      </div>
+                      <div className="fw-semibold font-monospace small text-break">
+                        {spotGpsLocation.longitude.toFixed(6)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <hr className="my-3" />
+
+                  <div className="d-flex align-items-center justify-content-between gap-3">
+                    <span className="small text-secondary">
+                      Estimated GPS accuracy
+                    </span>
+                    <span className="fw-semibold small">
+                      {Math.round(spotGpsLocation.accuracy)} metres
+                    </span>
+                  </div>
+
+                  <div className="progress mt-2" style={{ height: 5 }}>
+                    <div
+                      className="progress-bar bg-success"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            (1 -
+                              spotGpsLocation.accuracy /
+                                MAX_GPS_ACCURACY_METERS) *
+                              100
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="small text-secondary mt-2">
+                    {isFreshAccurateGps(spotGpsLocation)
+                      ? "This reading meets the location requirements."
+                      : "Get a new GPS reading before continuing."}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="rounded-3 p-3 mt-3 small text-secondary"
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px dashed #cbd5e1",
+                  }}
+                >
+                  <i className="bi bi-info-circle me-2 text-success" />
+                  Your coordinates will appear here after a successful
+                  GPS reading.
+                </div>
+              )}
+
+              {/* PANEL FOOTER */}
+
+              <div className="d-flex gap-2 mt-4">
+                <button
+                  type="button"
+                  className="btn btn-light border rounded-3 py-2 flex-fill fw-semibold"
+                  onClick={cancelSpotSelection}
+                  disabled={spotGpsLoading || submittingSpot}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-success rounded-3 py-2 flex-fill fw-semibold"
+                  onClick={handleConfirmSpotLocation}
+                  disabled={
+                    !isFreshAccurateGps(spotGpsLocation) ||
+                    spotGpsLoading ||
+                    submittingSpot
+                  }
+                >
+                  Continue
+                  <i className="bi bi-arrow-right ms-2" />
+                </button>
               </div>
 
-              <div className="small">
-                Longitude:{" "}
-                {selectedSpotLocation.longitude.toFixed(6)}
+              <div className="small text-secondary text-center mt-3">
+                <i className="bi bi-lock-fill me-1" />
+                Only a verified current GPS reading can be submitted.
               </div>
             </div>
-          ) : (
-            <div className="alert alert-info small mt-3 mb-3">
-              No location selected yet.
-            </div>
-          )}
-
-          {/* CANCEL AND CONFIRM */}
-          <div className="d-flex gap-2">
-            <button
-              type="button"
-              className="btn btn-outline-secondary flex-fill"
-              onClick={cancelSpotSelection}
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-success flex-fill"
-              disabled={!selectedSpotLocation}
-              onClick={handleConfirmSpotLocation}
-            >
-              Confirm Location
-            </button>
           </div>
         </div>
       )}
 
-      {/* ======================================================
-          ACTION NOTIFICATION
-      ====================================================== */}
+      {/* ACTION NOTIFICATION */}
 
       {actionMessage && (
         <div
@@ -1152,9 +1643,7 @@ function App() {
         </div>
       )}
 
-      {/* ======================================================
-          STATUS MESSAGES
-      ====================================================== */}
+      {/* STATUS MESSAGES */}
 
       {spotsLoading && mapLocation && (
         <StatusMessage
@@ -1185,13 +1674,11 @@ function App() {
         />
       )}
 
-      {/* ======================================================
-          HIDDENSPOT DETAILS FORM
-      ====================================================== */}
+      {/* HIDDENSPOT DETAILS FORM */}
 
       <HiddenSpotForm
         show={showSpotForm}
-        location={selectedSpotLocation}
+        location={spotGpsLocation}
         categories={spotCategories}
         categoriesLoading={categoriesLoading}
         onClose={handleSpotFormClose}
@@ -1210,9 +1697,7 @@ function App() {
         </div>
       )}
 
-      {/* ======================================================
-          LOGIN / REGISTER MODAL
-      ====================================================== */}
+      {/* LOGIN / REGISTER MODAL */}
 
       <AuthModal
         show={authModalOpen}

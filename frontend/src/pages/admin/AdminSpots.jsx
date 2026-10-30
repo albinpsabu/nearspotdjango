@@ -49,11 +49,11 @@ function getCategoryName(spot, categories) {
 function StatCard({ title, value, color }) {
   return (
     <div className="col-12 col-sm-6 col-xl-3">
-      <div className="card border-0 shadow-sm rounded-4 h-100">
+      <div className="card shadow-sm rounded-4 h-100 spots-theme-card">
         <div className="card-body p-4">
           <div
             className="mb-2"
-            style={{ color: "#7c8b8e", fontSize: "11px", fontWeight: 600 }}
+            style={{ color: "#666666", fontSize: "11px", fontWeight: 600 }}
           >
             {title}
           </div>
@@ -68,10 +68,10 @@ function StatCard({ title, value, color }) {
 
 function StatusBadge({ status }) {
   const styles = {
-    PENDING: { background: "#fff4d8", color: "#a66b00" },
-    APPROVED: { background: "#e2f5ec", color: "#16866d" },
+    PENDING: { background: "#FFF5D6", color: "#805B16" },
+    APPROVED: { background: "#FFF5D6", color: "#805F00" },
     REJECTED: { background: "#fde8e8", color: "#b42335" },
-    CANCELLED: { background: "#eef0f2", color: "#667085" },
+    CANCELLED: { background: "#eef0f2", color: "#666666" },
   };
 
   const normalized = String(status || "UNKNOWN").toUpperCase();
@@ -257,17 +257,69 @@ function AdminSpots() {
 
   return (
     <AdminLayout>
+      <style>{`
+        .spots-theme-card {
+          border: 1px solid #E5E5E5 !important;
+          border-top: 3px solid #FFC21A !important;
+          background: #FFFFFF;
+        }
+        .spots-theme-card .card-body {
+          background-color: #FFFFFF;
+        }
+        .spots-search-icon {
+          background: #FFFFFF !important;
+          color: #8A6500;
+          border: 1px solid #E5E5E5 !important;
+          border-right: 0 !important;
+          border-radius: 10px 0 0 10px !important;
+        }
+        .spots-search-input {
+          border: 1px solid #E5E5E5 !important;
+          border-left: 0 !important;
+          border-radius: 0 10px 10px 0 !important;
+          box-shadow: none !important;
+        }
+        .spots-search-input:focus,
+        .spots-filter-select:focus {
+          border-color: #FFC21A !important;
+          box-shadow: 0 0 0 3px rgba(255, 194, 26, 0.22) !important;
+          outline: none;
+        }
+        .spots-filter-select {
+          border-color: #E5E5E5;
+          border-radius: 10px;
+          box-shadow: none;
+        }
+        .spots-theme-card .table thead th {
+          background-color: #FFF9E8;
+        }
+        .spots-primary-button {
+          background: #FFC21A !important;
+          border: 1px solid #FFC21A !important;
+          color: #292929 !important;
+          font-weight: 600;
+        }
+        .spots-primary-button:hover {
+          background: #E5AC00 !important;
+          border-color: #E5AC00 !important;
+        }
+        .spots-view-button:hover {
+          border-color: #FFC21A !important;
+          background: #FFF5D6 !important;
+          color: #292929 !important;
+        }
+      `}</style>
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
           <h1
             className="fw-bold mb-1"
-            style={{ color: "#1d2b2e", fontSize: "24px" }}
+            style={{ color: "#292929", fontSize: "24px" }}
           >
             Spot Management
           </h1>
           <p
             className="mb-0"
-            style={{ color: "#7c8b8e", fontSize: "13px" }}
+            style={{ color: "#666666", fontSize: "13px" }}
           >
             Review and manage hidden spots submitted to NearSpot.
           </p>
@@ -276,7 +328,7 @@ function AdminSpots() {
         <button
           type="button"
           className="btn btn-light border rounded-3 px-3"
-          style={{ color: "#536366", fontSize: "12px", fontWeight: 600 }}
+          style={{ color: "#555555", fontSize: "12px", fontWeight: 600 }}
           onClick={() => {
             fetchSpots();
             fetchCategories();
@@ -324,17 +376,17 @@ function AdminSpots() {
         <StatCard
           title="ALL SPOTS"
           value={loading ? "..." : statistics.total}
-          color="#1d2b2e"
+          color="#292929"
         />
         <StatCard
           title="PENDING"
           value={loading ? "..." : statistics.pending}
-          color="#c78318"
+          color="#A87400"
         />
         <StatCard
           title="APPROVED"
           value={loading ? "..." : statistics.approved}
-          color="#16866d"
+          color="#805F00"
         />
         <StatCard
           title="REJECTED"
@@ -343,17 +395,17 @@ function AdminSpots() {
         />
       </div>
 
-      <div className="card border-0 shadow-sm rounded-4 mb-3">
+      <div className="card shadow-sm rounded-4 mb-3 spots-theme-card">
         <div className="card-body p-3 p-md-4">
           <div className="row g-2">
             <div className="col-12 col-lg-6">
               <div className="input-group">
-                <span className="input-group-text bg-white border-end-0">
+                <span className="input-group-text spots-search-icon">
                   ⌕
                 </span>
                 <input
                   type="text"
-                  className="form-control border-start-0"
+                  className="form-control spots-search-input"
                   placeholder="Search by name, description, category, or ID..."
                   aria-label="Search spots"
                   value={search}
@@ -364,7 +416,7 @@ function AdminSpots() {
 
             <div className="col-12 col-sm-6 col-lg-3">
               <select
-                className="form-select"
+                className="form-select spots-filter-select"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
                 aria-label="Filter spots by status"
@@ -379,7 +431,7 @@ function AdminSpots() {
 
             <div className="col-12 col-sm-6 col-lg-3">
               <select
-                className="form-select"
+                className="form-select spots-filter-select"
                 value={categoryFilter}
                 onChange={(event) => setCategoryFilter(event.target.value)}
                 aria-label="Filter spots by category"
@@ -396,18 +448,18 @@ function AdminSpots() {
         </div>
       </div>
 
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+      <div className="card shadow-sm rounded-4 overflow-hidden spots-theme-card">
         <div className="card-body p-0">
           <div className="p-3 p-md-4 border-bottom">
             <h5
               className="fw-semibold mb-1"
-              style={{ color: "#1d2b2e", fontSize: "16px" }}
+              style={{ color: "#292929", fontSize: "16px" }}
             >
               All Hidden Spots
             </h5>
             <p
               className="mb-0"
-              style={{ color: "#8a989a", fontSize: "12px" }}
+              style={{ color: "#777777", fontSize: "12px" }}
             >
               Showing {filteredSpots.length} of {spots.length} spots.
             </p>
@@ -415,7 +467,7 @@ function AdminSpots() {
 
           <div className="table-responsive">
             <table className="table align-middle mb-0">
-              <thead>
+              <thead style={{ backgroundColor: "#FFF9E8" }}>
                 <tr>
                   {["SPOT", "CATEGORY", "STATUS", "CREATED", "ACTION"].map(
                     (heading) => (
@@ -423,7 +475,7 @@ function AdminSpots() {
                         key={heading}
                         className="px-3 py-3"
                         style={{
-                          color: "#7c8b8e",
+                          color: "#666666",
                           fontSize: "10px",
                           fontWeight: 700,
                           whiteSpace: "nowrap",
@@ -458,7 +510,7 @@ function AdminSpots() {
                         <div
                           className="fw-semibold"
                           style={{
-                            color: "#1d2b2e",
+                            color: "#292929",
                             fontSize: "13px",
                             minWidth: "140px",
                           }}
@@ -467,7 +519,7 @@ function AdminSpots() {
                         </div>
                         <div
                           className="mt-1"
-                          style={{ color: "#9aa6a8", fontSize: "11px" }}
+                          style={{ color: "#777777", fontSize: "11px" }}
                         >
                           ID: {spot.id}
                         </div>
@@ -475,7 +527,7 @@ function AdminSpots() {
 
                       <td
                         style={{
-                          color: "#667779",
+                          color: "#666666",
                           fontSize: "12px",
                           whiteSpace: "nowrap",
                         }}
@@ -489,7 +541,7 @@ function AdminSpots() {
 
                       <td
                         style={{
-                          color: "#667779",
+                          color: "#666666",
                           fontSize: "12px",
                           whiteSpace: "nowrap",
                         }}
@@ -540,7 +592,7 @@ function AdminSpots() {
                 <h5
                   className="modal-title fw-bold"
                   id="spotDetailsTitle"
-                  style={{ color: "#1d2b2e", fontSize: "17px" }}
+                  style={{ color: "#292929", fontSize: "17px" }}
                 >
                   Spot Details
                 </h5>
@@ -614,7 +666,7 @@ function AdminSpots() {
                 {selectedSpot.status !== "APPROVED" && (
                   <button
                     type="button"
-                    className="btn btn-success rounded-3"
+                    className="btn rounded-3 spots-primary-button"
                     disabled={actionLoading}
                     onClick={() =>
                       handleStatusUpdate(selectedSpot, "APPROVED")

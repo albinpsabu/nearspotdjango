@@ -105,37 +105,53 @@ function NearSpotSidebar({
 
   return (
     <>
-      {/* Responsive widths are shared with the Directions panel.
-          App.jsx search positioning will be adjusted in the next step. */}
       <style>{`
         .nearspot-primary-sidebar {
           width: 320px;
           max-width: 100vw;
         }
+
         .nearspot-primary-sidebar.is-collapsed {
           width: 76px;
         }
+
+        /* Hide the scrollbar without disabling scrolling */
+        .nearspot-primary-sidebar .overflow-auto {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+
+        .nearspot-primary-sidebar .overflow-auto::-webkit-scrollbar {
+          display: none;
+        }
+
         .nearspot-directions-panel {
           left: 76px;
           width: min(420px, calc(100vw - 76px));
           max-width: calc(100vw - 76px);
         }
+
         @media (max-width: 600px) {
           .nearspot-primary-sidebar:not(.is-collapsed) {
             width: min(320px, 100vw);
           }
+
           .nearspot-directions-panel {
             overscroll-behavior: contain;
           }
+
           .nearspot-primary-sidebar button,
           .nearspot-directions-panel button {
             touch-action: manipulation;
           }
         }
       `}</style>
-      {/* ORIGINAL NEARSPOT SIDEBAR */}
+
+      {/* PRIMARY SIDEBAR */}
       <aside
-        className={`nearspot-primary-sidebar position-absolute d-flex flex-column bg-white border shadow-lg ${collapsed ? "is-collapsed" : ""}`}
+        className={`nearspot-primary-sidebar position-absolute d-flex flex-column bg-white border shadow-lg ${
+          collapsed ? "is-collapsed" : ""
+        }`}
         style={{
           top: "0px",
           bottom: "0px",
@@ -154,11 +170,40 @@ function NearSpotSidebar({
               : "justify-content-between"
           }`}
         >
-          <div className="d-flex align-items-center gap-2">
-            <i className="bi bi-geo-alt-fill fs-3 text-success" />
+          <div
+            className="d-flex align-items-center gap-2"
+            style={{ minHeight: "44px" }}
+          >
+            <div
+              style={{
+                width: "44px",
+                height: "44px",
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <img
+                src="/logo.png"
+                alt="NearSpot"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+            </div>
 
             {!collapsed && (
-              <span className="fs-4 fw-bold text-dark">
+              <span
+                className="fs-4 fw-bold text-dark"
+                style={{
+                  lineHeight: 1,
+                  margin: 0,
+                }}
+              >
                 NearSpot
               </span>
             )}
@@ -176,7 +221,7 @@ function NearSpotSidebar({
           </button>
         </div>
 
-        {/* NAVIGATION */}
+        {/* NAVIGATION AND CONTENT */}
         <div className="flex-grow-1 overflow-auto p-3">
           <nav className="nav nav-pills flex-column gap-2">
             {menuItems.map((item) => (
@@ -344,9 +389,7 @@ function NearSpotSidebar({
                   <button
                     type="button"
                     className="btn btn-light w-100 text-start mb-2"
-                    onClick={() =>
-                      navigate("/user/submissions")
-                    }
+                    onClick={() => navigate("/user/submissions")}
                   >
                     <i className="bi bi-pin-map me-2" />
                     My Submissions
@@ -355,9 +398,7 @@ function NearSpotSidebar({
                   <button
                     type="button"
                     className="btn btn-light w-100 text-start mb-2"
-                    onClick={() =>
-                      navigate("/user/reviews")
-                    }
+                    onClick={() => navigate("/user/reviews")}
                   >
                     <i className="bi bi-star me-2" />
                     My Reviews
@@ -366,9 +407,7 @@ function NearSpotSidebar({
                   <button
                     type="button"
                     className="btn btn-light w-100 text-start"
-                    onClick={() =>
-                      navigate("/user/saved")
-                    }
+                    onClick={() => navigate("/user/saved")}
                   >
                     <i className="bi bi-bookmark-heart me-2" />
                     Saved Spots
@@ -407,9 +446,7 @@ function NearSpotSidebar({
                 {!collapsed && (
                   <span className="overflow-hidden">
                     <strong className="d-block small text-truncate">
-                      {user?.name ||
-                        user?.email ||
-                        "My Account"}
+                      {user?.name || user?.email || "My Account"}
                     </strong>
 
                     <span className="d-block small text-secondary text-truncate">
@@ -497,4 +534,3 @@ function NearSpotSidebar({
 }
 
 export default NearSpotSidebar;
-

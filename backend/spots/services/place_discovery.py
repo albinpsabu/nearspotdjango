@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 DISCOVERY_CACHE_HOURS = 24
-STALE_CACHE_DAYS = 7
+STALE_CACHE_DAYS = 14
 
 MAX_DISCOVERY_RESULTS = 150
 

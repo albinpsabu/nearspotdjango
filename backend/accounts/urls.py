@@ -15,7 +15,9 @@ from .views import (
     PasswordResetConfirmView,
     AdminDashboardStatsView,
     AdminEmployeeStatusView,
-    AdminEmployeeListView
+    AdminEmployeeListView,
+    AdminPermissionCatalogueView,
+    AdminEmployeePermissionsView,
 )
 
 
@@ -98,6 +100,20 @@ urlpatterns = [
     path("employees/list/", 
     AdminEmployeeListView.as_view(), 
     name="admin-employee-list"
+    ),
+
+
+    path(
+    "permissions/",
+    AdminPermissionCatalogueView.as_view(),
+    name="permission-catalogue",
+    ),
+
+    
+    path(
+        "employees/<int:pk>/permissions/",
+        AdminEmployeePermissionsView.as_view(),
+        name="admin-employee-permissions",
     ),
 
 
